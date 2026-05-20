@@ -11,6 +11,15 @@ let activeStockCode = '2360'; // Default active stock (Chroma 致茂)
 let activeStockData = null;   // Active calculated stock payload
 let activeChipData = null;    // Active institutional chips payload
 
+// Watchlist memory
+let watchlist = [];
+const defaultWatchlist = [
+  { code: '2360', name: '致茂', change: '+3.16%' },
+  { code: '2330', name: '台積電', change: '+1.45%' },
+  { code: '2317', name: '鴻海', change: '-0.85%' },
+  { code: '2454', name: '聯發科', change: '+0.50%' }
+];
+
 // Chart instance
 let chartInstance = null;
 
@@ -22,6 +31,9 @@ document.addEventListener('DOMContentLoaded', () => {
   // Draw Initial Mock Gauges
   drawWinRateGauge(58, "偏多震盪");
   drawProbabilityPie(45, 30, 25);
+
+  // Initialize Watchlist
+  initWatchlist();
 
   // Setup DOM Event Listeners
   initAppEvents();
@@ -47,13 +59,23 @@ function initAppEvents() {
   btnSearch.addEventListener('click', handleSearch);
   txtSearch.addEventListener('keypress', (e) => { if (e.key === 'Enter') handleSearch(); });
 
-  // Quick switch list
+  // Quick switch list & deletion
   document.getElementById('stockList').addEventListener('click', (e) => {
+    // If delete button clicked
+    const deleteBtn = e.target.closest('.btn-delete-stock');
+    if (deleteBtn) {
+      e.stopPropagation(); // Avoid triggering parent item click
+      const code = deleteBtn.dataset.code;
+      removeFromWatchlist(code);
+      return;
+    }
+
     const item = e.target.closest('.stock-item');
     if (item) {
+      const code = item.dataset.code;
+      // Mark as active in UI
       document.querySelectorAll('.stock-item').forEach(el => el.classList.remove('active'));
       item.classList.add('active');
-      const code = item.dataset.code;
       loadStockData(code);
     }
   });
@@ -252,6 +274,10 @@ async function loadStockData(stockId) {
   const priceDiff = latestBar.close - prevBar.close;
   const priceDiffPct = (priceDiff / prevBar.close) * 100;
   const isUp = priceDiff >= 0;
+
+  // Add/Update Watchlist
+  const changeText = (priceDiffPct >= 0 ? '+' : '') + priceDiffPct.toFixed(2) + '%';
+  addToWatchlist(stockId, result.metadata.name, changeText);
 
   const hdrPrice = document.getElementById('hdrCurrentPrice');
   hdrPrice.innerText = latestBar.close.toFixed(2);
@@ -907,4 +933,73 @@ function formatMarkdown(text) {
   html = html.replace(/\n/g, '<br>');
 
   return html;
+}
+
+/**
+ * Watchlist Engine Functions
+ */
+function initWatchlist() {
+  const saved = localStorage.getItem('saved_watchlist');
+  if (saved) {
+    try {
+      watchlist = JSON.parse(saved);
+    } catch (e) {
+      console.error("Failed to parse saved watchlist, using default.", e);
+      watchlist = [...defaultWatchlist];
+    }
+  } else {
+    watchlist = [...defaultWatchlist];
+    localStorage.setItem('saved_watchlist', JSON.stringify(watchlist));
+  }
+  renderWatchlist();
+}
+
+function renderWatchlist() {
+  const stockListEl = document.getElementById('stockList');
+  if (!stockListEl) return;
+  
+  stockListEl.innerHTML = '';
+  watchlist.forEach(item => {
+    const isActive = item.code === activeStockCode ? 'active' : '';
+    // Format color class for change indicator
+    let changeClass = '';
+    if (item.change) {
+      if (item.change.startsWith('+') || item.change.includes('▲')) {
+        changeClass = 'text-up';
+      } else if (item.change.startsWith('-') || item.change.includes('▼')) {
+        changeClass = 'text-down';
+      }
+    }
+
+    const div = document.createElement('div');
+    div.className = `stock-item ${isActive}`;
+    div.dataset.code = item.code;
+    div.innerHTML = `
+      <span class="code">${item.code}</span>
+      <span class="name">${item.name}</span>
+      <span class="change ${changeClass}">${item.change || '--'}</span>
+      <button class="btn-delete-stock" data-code="${item.code}" title="從觀測清單刪除">&times;</button>
+    `;
+    stockListEl.appendChild(div);
+  });
+}
+
+function addToWatchlist(code, name, change) {
+  const existingIdx = watchlist.findIndex(item => item.code === code);
+  if (existingIdx > -1) {
+    // Update existing details
+    watchlist[existingIdx].name = name;
+    watchlist[existingIdx].change = change;
+  } else {
+    // Add new stock
+    watchlist.push({ code, name, change });
+  }
+  localStorage.setItem('saved_watchlist', JSON.stringify(watchlist));
+  renderWatchlist();
+}
+
+function removeFromWatchlist(code) {
+  watchlist = watchlist.filter(item => item.code !== code);
+  localStorage.setItem('saved_watchlist', JSON.stringify(watchlist));
+  renderWatchlist();
 }

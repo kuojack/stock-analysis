@@ -1,5 +1,5 @@
 /* ==========================================================================
-   Antigravity Stock Dashboard Core Stylesheet (Vanilla CSS)
+   Stock Analysis Dashboard Core Stylesheet (Vanilla CSS)
    Aesthetic: Deep Obsidian, Cyberpunk Accents, Glassmorphism, Micro-Animations
    ========================================================================== */
 
@@ -419,6 +419,29 @@ body {
   font-family: var(--font-display);
   font-weight: 500;
   font-size: 11px;
+}
+
+.btn-delete-stock {
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0 4px;
+  margin-left: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color var(--transition-speed), background-color var(--transition-speed), transform var(--transition-speed);
+  border-radius: 4px;
+  height: 20px;
+  width: 20px;
+}
+
+.btn-delete-stock:hover {
+  color: #ff453a;
+  background: rgba(255, 69, 58, 0.15);
+  transform: scale(1.15);
 }
 
 /* Info helper card */

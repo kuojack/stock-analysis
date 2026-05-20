@@ -60,12 +60,6 @@ class DataEngine {
    * @returns {Promise<{metadata: object, history: Array}>}
    */
   static async fetchStockData(stockId, apiKey) {
-    // If no API Key is set, return beautiful mock data immediately
-    if (!apiKey) {
-      console.warn("未設定 FinMind API Key，載入高擬真模擬資料庫");
-      return this.getMockStockData(stockId);
-    }
-
     // Calculate dates: 1 year range
     const endDateStr = new Date().toISOString().split('T')[0];
     const startDate = new Date();
@@ -110,7 +104,7 @@ class DataEngine {
       } else {
         // Fetch from stock name database if possible or just parse a default
         try {
-          const infoUrl = `https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockInfo`;
+          const infoUrl = `https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockInfo${apiKey ? `&token=${apiKey}` : ''}`;
           const infoRes = await fetch(infoUrl);
           const infoData = await infoRes.json();
           if (infoData.status === 200 && infoData.data) {
@@ -146,46 +140,44 @@ class DataEngine {
     let result = [];
     let isMocked = true;
 
-    if (apiKey) {
-      try {
-        const last5Days = historyData.slice(-10);
-        const startDateStr = last5Days[0].date;
-        const endDateStr = last5Days[last5Days.length - 1].date;
-        const url = `https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockInstitutionalInvestorsBuySell&data_id=${stockId}&start_date=${startDateStr}&end_date=${endDateStr}&token=${apiKey}`;
-        
-        const response = await fetch(url);
-        const resData = await response.json();
+    try {
+      const last5Days = historyData.slice(-10);
+      const startDateStr = last5Days[0].date;
+      const endDateStr = last5Days[last5Days.length - 1].date;
+      const url = `https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockInstitutionalInvestorsBuySell&data_id=${stockId}&start_date=${startDateStr}&end_date=${endDateStr}${apiKey ? `&token=${apiKey}` : ''}`;
+      
+      const response = await fetch(url);
+      const resData = await response.json();
 
-        if (resData.status === 200 && resData.data && resData.data.length > 0) {
-          isMocked = false;
-          // Process FinMind data
-          // FinMind gives separate rows for Foreign, InvestmentTrust, Dealer. We need to group them by date.
-          const grouped = {};
-          resData.data.forEach(item => {
-            if (!grouped[item.date]) {
-              grouped[item.date] = { date: item.date, foreign: 0, trust: 0, dealer: 0 };
-            }
-            const netBuy = Math.floor((item.buy - item.sell) / 1000); // in '張' (thousands of shares)
-            if (item.name === 'Foreign_Investor' || item.name === '外陸資(不含外資自營商)') {
-              grouped[item.date].foreign += netBuy;
-            } else if (item.name === 'Investment_Trust' || item.name === '投信') {
-              grouped[item.date].trust += netBuy;
-            } else if (item.name === 'Dealer' || item.name === '自營商(自行買賣)' || item.name === '自營商(避險)') {
-              grouped[item.date].dealer += netBuy;
-            }
-          });
-          
-          result = Object.values(grouped).map(d => ({
-            date: d.date,
-            foreign: d.foreign,
-            trust: d.trust,
-            dealer: d.dealer,
-            total: d.foreign + d.trust + d.dealer
-          })).sort((a,b) => b.date.localeCompare(a.date)).slice(0, 5);
-        }
-      } catch (e) {
-        console.warn("三大法人 FinMind API 串接失敗，改用智能籌碼推算模組:", e);
+      if (resData.status === 200 && resData.data && resData.data.length > 0) {
+        isMocked = false;
+        // Process FinMind data
+        // FinMind gives separate rows for Foreign, InvestmentTrust, Dealer. We need to group them by date.
+        const grouped = {};
+        resData.data.forEach(item => {
+          if (!grouped[item.date]) {
+            grouped[item.date] = { date: item.date, foreign: 0, trust: 0, dealer: 0 };
+          }
+          const netBuy = Math.floor((item.buy - item.sell) / 1000); // in '張' (thousands of shares)
+          if (item.name === 'Foreign_Investor' || item.name === '外陸資(不含外資自營商)') {
+            grouped[item.date].foreign += netBuy;
+          } else if (item.name === 'Investment_Trust' || item.name === '投信') {
+            grouped[item.date].trust += netBuy;
+          } else if (item.name === 'Dealer' || item.name === '自營商(自行買賣)' || item.name === '自營商(避險)') {
+            grouped[item.date].dealer += netBuy;
+          }
+        });
+        
+        result = Object.values(grouped).map(d => ({
+          date: d.date,
+          foreign: d.foreign,
+          trust: d.trust,
+          dealer: d.dealer,
+          total: d.foreign + d.trust + d.dealer
+        })).sort((a,b) => b.date.localeCompare(a.date)).slice(0, 5);
       }
+    } catch (e) {
+      console.warn("三大法人 FinMind API 串接失敗，改用智能籌碼推算模組:", e);
     }
 
     // Fallback: Smart Chip Flow Generator (determines chips based on price increase/decrease and volume)
