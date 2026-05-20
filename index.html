@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>本地看盤與智能分析系統 | Gemini AI Co-Pilot</title>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <!-- CSS Stylesheet -->
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- App Shell Container -->
+  <div class="app-container">
+    
+    <!-- Top Header / Stock Info Bar -->
+    <header class="main-header">
+      <div class="brand">
+        <svg class="brand-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <path d="M3 3v18h18" />
+          <path d="M18.7 8l-5.1 5.2-2.8-2.7L7 14.3" />
+        </svg>
+        <span class="brand-text">Antigravity Trade</span>
+      </div>
+
+      <!-- Active Ticker Bar -->
+      <div class="ticker-bar" id="tickerBar">
+        <div class="ticker-info">
+          <span class="stock-name" id="hdrStockName">致茂</span>
+          <span class="stock-code" id="hdrStockCode">2360</span>
+          <span class="stock-industry" id="hdrStockIndustry">[IC設計]</span>
+        </div>
+        <div class="price-container">
+          <span class="current-price" id="hdrCurrentPrice">2120.00</span>
+          <span class="price-change-arrow" id="hdrChangeArrow">▲</span>
+          <span class="price-change" id="hdrPriceChange">65.00</span>
+          <span class="price-change-percent" id="hdrPriceChangePercent">(3.16%)</span>
+        </div>
+        <div class="ticker-details">
+          <div class="detail-item"><span class="lbl">單量</span><span class="val" id="hdrSingleVol">14</span></div>
+          <div class="detail-item"><span class="lbl">總量</span><span class="val" id="hdrTotalVol">3765</span></div>
+          <div class="detail-item"><span class="lbl">買進</span><span class="val text-up" id="hdrBidPrice">2120.00</span></div>
+          <div class="detail-item"><span class="lbl">賣出</span><span class="val text-down" id="hdrAskPrice">2125.00</span></div>
+          <div class="detail-item"><span class="lbl">均價</span><span class="val" id="hdrAvgPrice">2125.71</span></div>
+          <div class="detail-item"><span class="lbl">內盤</span><span class="val text-down" id="hdrInnerVol">1857</span></div>
+          <div class="detail-item"><span class="lbl">外盤</span><span class="val text-up" id="hdrOuterVol">1908</span></div>
+        </div>
+        <div class="ticker-extremes">
+          <div class="detail-item"><span class="lbl">開盤</span><span class="val" id="hdrOpenPrice">2115.00</span></div>
+          <div class="detail-item"><span class="lbl">最高</span><span class="val text-up" id="hdrHighPrice">2155.00</span></div>
+          <div class="detail-item"><span class="lbl">最低</span><span class="val text-down" id="hdrLowPrice">2085.00</span></div>
+        </div>
+        <div class="ticker-time">
+          <span class="lbl">時間</span>
+          <span class="val" id="hdrTime">04/30 14:30:00</span>
+        </div>
+      </div>
+
+      <!-- Settings & API Status Indicators -->
+      <div class="header-actions">
+        <button class="btn-api-status locked" id="btnApiConfig">
+          <span class="api-status-dot"></span>
+          <span class="api-status-text" id="lblApiStatus">金鑰未解密</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <div class="main-layout">
+      
+      <!-- Left Sidebar: Stock List & Search -->
+      <aside class="sidebar">
+        <!-- Search Ticker -->
+        <div class="search-box">
+          <input type="text" id="txtSearchStock" placeholder="輸入台股代碼 (如 2330)..." autocomplete="off">
+          <button id="btnSearchStock">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+          </button>
+        </div>
+
+        <!-- Quick Switch List -->
+        <div class="sidebar-section">
+          <div class="section-title">熱門觀測股</div>
+          <div class="stock-quick-list" id="stockList">
+            <!-- Dynamic elements will be loaded here -->
+            <div class="stock-item active" data-code="2360">
+              <span class="code">2360</span>
+              <span class="name">致茂</span>
+              <span class="change text-up">+3.16%</span>
+            </div>
+            <div class="stock-item" data-code="2330">
+              <span class="code">2330</span>
+              <span class="name">台積電</span>
+              <span class="change text-up">+1.45%</span>
+            </div>
+            <div class="stock-item" data-code="2317">
+              <span class="code">2317</span>
+              <span class="name">鴻海</span>
+              <span class="change text-down">-0.85%</span>
+            </div>
+            <div class="stock-item" data-code="2454">
+              <span class="code">2454</span>
+              <span class="name">聯發科</span>
+              <span class="change text-up">+0.50%</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- System Stats / Hint -->
+        <div class="sidebar-section info-card">
+          <div class="info-icon">💡</div>
+          <div class="info-content">
+            <h4>本地加密儲存說明</h4>
+            <p>您的 API 金鑰使用 PBKDF2 + AES-GCM 軍規加密技術封存在本地瀏覽器中，本機外的人絕無可能還原。</p>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Central Stock View (Dashboard Panels) -->
+      <main class="dashboard-grid">
+        
+        <!-- Panel 1: Main Candlestick Chart -->
+        <section class="card card-kline">
+          <div class="card-header">
+            <div class="card-title">
+              <span class="title-text">K線圖表 (Bollinger Bands + SMA)</span>
+              <div class="chart-indicators-legend">
+                <span class="legend-item s5">SMA5: <b id="valSma5">--</b></span>
+                <span class="legend-item s20">SMA20: <b id="valSma20">--</b></span>
+                <span class="legend-item s60">SMA60: <b id="valSma60">--</b></span>
+                <span class="legend-item bb">布林軌道 (20,2)</span>
+              </div>
+            </div>
+            <div class="chart-controls">
+              <button class="btn-toggle active" id="btnToggleBB">布林通道</button>
+              <button class="btn-toggle active" id="btnToggleMA">移動平均線</button>
+            </div>
+          </div>
+          <div class="card-body chart-wrapper">
+            <canvas id="klineCanvas"></canvas>
+            <div class="chart-loading" id="chartLoader">
+              <div class="spinner"></div>
+              <span>請先完成 API 金鑰配置...</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- Panel 2: Technical Overview -->
+        <section class="card card-tech-overview">
+          <div class="card-header">
+            <div class="card-title">技術分析總覽</div>
+          </div>
+          <div class="card-body">
+            <ul class="data-list" id="listTechOverview">
+              <li><span class="label">趨勢方向</span><span class="value font-weight-bold" id="lblTrendDir">--</span></li>
+              <li><span class="label">價格位置</span><span class="value" id="lblPricePos">--</span></li>
+              <li><span class="label">均線排列</span><span class="value" id="lblMaArrangement">--</span></li>
+              <li><span class="label">量價關係</span><span class="value" id="lblVolPriceRelation">--</span></li>
+              <li><span class="label">布林位置</span><span class="value" id="lblBbPos">--</span></li>
+              <li><span class="label">布林通道</span><span class="value" id="lblBbChannel">--</span></li>
+              <li class="divider"></li>
+              <li><span class="label text-highlight">綜合評估</span><span class="value text-highlight font-weight-bold" id="lblComprehensiveEval">--</span></li>
+            </ul>
+          </div>
+        </section>
+
+        <!-- Panel 3: 三大法人 (Institutional Flows) -->
+        <section class="card card-institutions">
+          <div class="card-header">
+            <div class="card-title">籌碼分析 (三大法人)</div>
+          </div>
+          <div class="card-body table-wrapper">
+            <table class="grid-table" id="tblInstitutions">
+              <thead>
+                <tr>
+                  <th>日期</th>
+                  <th>外資</th>
+                  <th>投信</th>
+                  <th>自營商</th>
+                  <th>合計</th>
+                </tr>
+              </thead>
+              <tbody id="tbodyInstitutions">
+                <tr><td colspan="5" class="text-center text-muted">無資料</td></tr>
+              </tbody>
+            </table>
+            <div class="panel-conclusion" id="lblInstConclusion">
+              結論：三大法人籌碼分析載入中...
+            </div>
+          </div>
+        </section>
+
+        <!-- Panel 4: Multi-Timeframe Analysis -->
+        <section class="card card-multi-timeframe">
+          <div class="card-header">
+            <div class="card-title">多週期分析</div>
+          </div>
+          <div class="card-body tf-container">
+            <div class="tf-card" id="tfShort">
+              <div class="tf-header">
+                <span class="tf-title">60分K (短線)</span>
+                <span class="tf-tag text-up" id="tfShortTag">--</span>
+              </div>
+              <div class="tf-body" id="tfShortDesc">價位站上中軌，短線多頭控盤，強勢突破偏多</div>
+            </div>
+            <div class="tf-card" id="tfMedium">
+              <div class="tf-header">
+                <span class="tf-title">日K (中線)</span>
+                <span class="tf-tag text-up" id="tfMediumTag">--</span>
+              </div>
+              <div class="tf-body" id="tfMediumDesc">多頭結構，均線多頭排列，中線偏多</div>
+            </div>
+            <div class="tf-card" id="tfLong">
+              <div class="tf-header">
+                <span class="tf-title">週K (長線)</span>
+                <span class="tf-tag text-up" id="tfLongTag">--</span>
+              </div>
+              <div class="tf-body" id="tfLongDesc">長線穩步墊高，站穩各週期均線，長線偏多</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Panel 5: Key Prices -->
+        <section class="card card-key-prices">
+          <div class="card-header">
+            <div class="card-title">關鍵價位</div>
+          </div>
+          <div class="card-body">
+            <ul class="data-list" id="listKeyPrices">
+              <li><span class="label">壓力區</span><span class="value text-up font-weight-bold" id="lblKeyResistance">--</span></li>
+              <li><span class="label">回檔區</span><span class="value text-warning" id="lblKeyPullback">--</span></li>
+              <li><span class="label">支撐區</span><span class="value text-down font-weight-bold" id="lblKeySupport">--</span></li>
+              <li><span class="label">跌破防守</span><span class="value text-down" id="lblKeyDefense">--</span></li>
+              <li><span class="label">強勢關鍵</span><span class="value text-highlight" id="lblKeyStrength">--</span></li>
+            </ul>
+          </div>
+        </section>
+
+        <!-- Panel 6: 主力進出 -->
+        <section class="card card-major-players">
+          <div class="card-header">
+            <div class="card-title">主力進出明細</div>
+          </div>
+          <div class="card-body table-wrapper">
+            <table class="grid-table" id="tblMajorPlayers">
+              <thead>
+                <tr>
+                  <th>日期</th>
+                  <th>主力增減</th>
+                  <th>10日累計</th>
+                  <th>收盤價</th>
+                  <th>漲跌幅</th>
+                </tr>
+              </thead>
+              <tbody id="tbodyMajorPlayers">
+                <tr><td colspan="5" class="text-center text-muted">無資料</td></tr>
+              </tbody>
+            </table>
+            <div class="panel-conclusion" id="lblMajorConclusion">
+              結論：主力資金動態分析載入中...
+            </div>
+          </div>
+        </section>
+
+        <!-- Panel 7: 型態分析 -->
+        <section class="card card-patterns">
+          <div class="card-header">
+            <div class="card-title">型態分析</div>
+          </div>
+          <div class="card-body pattern-body">
+            <div class="pattern-item" id="patWBottom">
+              <div class="pattern-illustration">
+                <svg viewBox="0 0 100 60" class="pattern-svg">
+                  <path d="M10,15 L25,45 L40,25 L55,45 L70,12 L85,12" fill="none" stroke="#2e384e" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                  <path id="svgWActive" d="M10,15 L25,45 L40,25 L55,45 L70,12 L85,12" fill="none" stroke="#ff3b30" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="150" stroke-dashoffset="150" class="draw-active"/>
+                  <line x1="10" y1="12" x2="90" y2="12" stroke="#4a5568" stroke-width="1.5" stroke-dasharray="3,3"/>
+                </svg>
+              </div>
+              <div class="pattern-desc">
+                <span class="p-title">W底 (雙底)</span>
+                <span class="p-status badge-inactive" id="lblWStatus">未形成</span>
+                <span class="p-detail" id="lblWDetail">標準 W 底未完成</span>
+              </div>
+            </div>
+            <div class="pattern-divider"></div>
+            <div class="pattern-item" id="patMHead">
+              <div class="pattern-illustration">
+                <svg viewBox="0 0 100 60" class="pattern-svg">
+                  <path d="M10,45 L25,15 L40,35 L55,15 L70,48 L85,48" fill="none" stroke="#2e384e" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                  <path id="svgMActive" d="M10,45 L25,15 L40,35 L55,15 L70,48 L85,48" fill="none" stroke="#30d158" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="150" stroke-dashoffset="150" class="draw-active"/>
+                  <line x1="10" y1="48" x2="90" y2="48" stroke="#4a5568" stroke-width="1.5" stroke-dasharray="3,3"/>
+                </svg>
+              </div>
+              <div class="pattern-desc">
+                <span class="p-title">M頭 (雙頂)</span>
+                <span class="p-status badge-inactive" id="lblMStatus">未形成</span>
+                <span class="p-detail" id="lblMDetail">標準 M 頭未完成</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Panel 8: 技術指標總覽 -->
+        <section class="card card-tech-table">
+          <div class="card-header">
+            <div class="card-title">技術指標總覽</div>
+          </div>
+          <div class="card-body table-wrapper">
+            <table class="grid-table" id="tblIndicators">
+              <thead>
+                <tr>
+                  <th>指標</th>
+                  <th>狀態</th>
+                  <th>說明</th>
+                </tr>
+              </thead>
+              <tbody id="tbodyIndicators">
+                <tr><td colspan="3" class="text-center text-muted">無資料</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- Panel 9: 操作建議 -->
+        <section class="card card-suggestions">
+          <div class="card-header">
+            <div class="card-title">操作建議</div>
+          </div>
+          <div class="card-body suggestions-layout">
+            <div class="suggestions-bullets" id="listSuggestions">
+              <div class="suggest-row"><span class="lbl-sug">策略：</span><span class="val-sug font-weight-bold text-highlight" id="sugStrategy">--</span></div>
+              <div class="suggest-row"><span class="lbl-sug">進場點：</span><span class="val-sug text-up" id="sugEntry">--</span></div>
+              <div class="suggest-row"><span class="lbl-sug">加碼點：</span><span class="val-sug text-warning" id="sugAdd">--</span></div>
+              <div class="suggest-row"><span class="lbl-sug">停損點：</span><span class="val-sug text-down" id="sugStopLoss">--</span></div>
+              <div class="suggest-row"><span class="lbl-sug">防守點：</span><span class="val-sug text-down" id="sugDefense">--</span></div>
+              <div class="suggest-row"><span class="lbl-sug">操作方向：</span><span class="val-sug text-highlight font-weight-bold" id="sugDirection">--</span></div>
+            </div>
+            
+            <div class="signal-gauge-wrapper">
+              <div class="signal-light-container">
+                <span class="lbl-light">主力燈號</span>
+                <div class="signal-bulb warning" id="signalLight">觀察</div>
+              </div>
+              <div class="signal-reason" id="lblSignalReason">
+                原因：主力短期動向未明，高檔震盪，多空僵持。
+              </div>
+            </div>
+          </div>
+        </section>
+        
+      </main>
+
+      <!-- Right Sidebar / Panel: Gemini AI Co-Pilot & AI Analytics -->
+      <aside class="ai-sidebar">
+        
+        <!-- Section A: Gemini Co-Pilot Dashboard (Gauges) -->
+        <div class="ai-dashboard-card">
+          <div class="ai-section-title">
+            <span class="ai-icon">✨</span> AI 智能分析與預測
+          </div>
+          
+          <div class="gauges-grid">
+            <!-- Win Rate Gauge -->
+            <div class="gauge-card">
+              <span class="gauge-title">短線勝率 (AI)</span>
+              <div class="gauge-container">
+                <canvas id="gaugeCanvas" width="140" height="85"></canvas>
+                <div class="gauge-val-overlay">
+                  <span class="g-num" id="lblGaugeWinRate">58%</span>
+                  <span class="g-lbl" id="lblGaugeTrend">偏多震盪</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Rise/Fall Probability Chart -->
+            <div class="gauge-card">
+              <span class="gauge-title">明日漲跌預測 (AI)</span>
+              <div class="pie-container">
+                <canvas id="pieCanvas" width="110" height="110"></canvas>
+                <div class="pie-legend">
+                  <div class="leg-item"><span class="dot up"></span><span>漲 <b id="lblProbRise">45%</b></span></div>
+                  <div class="leg-item"><span class="dot down"></span><span>跌 <b id="lblProbFall">30%</b></span></div>
+                  <div class="leg-item"><span class="dot neutral"></span><span>盤 <b id="lblProbNeutral">25%</b></span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <div class="ai-prediction-conclusion" id="lblAiConclusion">
+            預測結論：明日震盪偏多，留意高檔變化。
+          </div>
+        </div>
+
+        <!-- Section B: Gemini Chat Window -->
+        <div class="gemini-chat-card">
+          <div class="chat-header">
+            <div class="chat-header-left">
+              <span class="bot-status-pulse"></span>
+              <span class="bot-title">Gemini AI 個股顧問</span>
+            </div>
+            <!-- Model Dropdown -->
+            <div class="model-select-wrapper">
+              <select id="selGeminiModel">
+                <option value="gemini-2.5-flash" selected>Gemini 2.5 Flash (極速)</option>
+                <option value="gemini-2.5-pro">Gemini 2.5 Pro (深度分析)</option>
+                <option value="gemini-3.5-flash">Gemini 3.5 Flash</option>
+                <option value="gemini-3.1-pro">Gemini 3.1 Pro</option>
+                <option value="gemini-3.1-flash">Gemini 3.1 Flash</option>
+                <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
+                <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Chat Conversation Area -->
+          <div class="chat-messages" id="chatHistory">
+            <div class="msg bot">
+              <div class="msg-avatar">🤖</div>
+              <div class="msg-content">
+                您好！我是您的 <b>Gemini 智慧個股顧問</b>。
+                我已準備好為您解讀 <span class="highlight-stock" id="lblChatActiveStock">致茂 (2360)</span> 的多空趨勢。
+                <br><br>
+                您可以<b>點擊下方快捷按鈕</b>讓我為您撰寫即時報告，或是在下方輸入您的自訂問題！
+              </div>
+            </div>
+          </div>
+
+          <!-- Quick Action Prompts -->
+          <div class="quick-prompts">
+            <button class="btn-quick" id="btnQuickTech">📊 深度技術面分析</button>
+            <button class="btn-quick" id="btnQuickChip">💼 籌碼面大解析</button>
+            <button class="btn-quick" id="btnQuickAdvise">📈 綜合操作建議</button>
+          </div>
+
+          <!-- Input Area -->
+          <div class="chat-input-area">
+            <textarea id="txtChatInput" placeholder="請輸入您想對此股票詢問的問題..." rows="2"></textarea>
+            <button class="btn-send" id="btnSendChat" title="傳送問題">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <line x1="22" y1="2" x2="11" y2="13"></line>
+                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+      </aside>
+
+    </div>
+  </div>
+
+  <!-- Modal 1: Dual API Key Security Setup Dialog -->
+  <div class="modal-overlay" id="apiConfigModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title">🔑 安全金鑰管理控制台</h3>
+        <button class="modal-close" id="btnHideApiConfig">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-desc">為了對接真實股票數據與啟用 AI 解答，請配置您的 API 金鑰。金鑰將在您的瀏覽器端進行 AES-GCM 軍規加密封存，您的安全隱私 100% 受到保護。</p>
+        
+        <form id="frmApiConfig" onsubmit="return false;">
+          <div class="form-group">
+            <label for="txtFinmindKey">FinMind API Token <span class="badge-optional">(選填，無 Token 可獲取基礎或模擬數據)</span></label>
+            <input type="password" id="txtFinmindKey" placeholder="請輸入您的 FinMind API Token...">
+          </div>
+          
+          <div class="form-group">
+            <label for="txtGeminiKey">Google AI Studio (Gemini) API Key <span class="badge-required">(必填)</span></label>
+            <input type="password" id="txtGeminiKey" placeholder="請輸入您的 Gemini API Key..." required>
+          </div>
+          
+          <div class="form-group">
+            <label for="txtUserPin">設置/輸入解密 PIN 碼 <span class="badge-required">(必填, 4-8 位數字或密碼)</span></label>
+            <input type="password" id="txtUserPin" placeholder="設置或輸入 PIN 碼，用於解密金鑰..." required autocomplete="new-password">
+            <p class="input-tip">每次開啟網頁時，都需要輸入此 PIN 碼來解密並啟用 API，確保您的 Key 額度安全。</p>
+          </div>
+
+          <div class="modal-actions">
+            <button type="button" class="btn-secondary" id="btnCancelApiConfig">取消</button>
+            <button type="submit" class="btn-primary" id="btnSaveApiConfig">加密並儲存於本地</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 2: PIN Verification Dialog (Shown on App Startup if Encrypted Keys Exist) -->
+  <div class="modal-overlay" id="pinVerifyModal">
+    <div class="modal-card pin-card">
+      <div class="modal-header">
+        <h3 class="modal-title">🔒 輸入 PIN 碼以解密安全金鑰</h3>
+      </div>
+      <div class="modal-body">
+        <p class="modal-desc">本軟體已檢測到加密金鑰。請輸入您先前設定的 PIN 碼以解密並啟用看盤與 Gemini AI 智慧分析服務。</p>
+        
+        <form id="frmPinVerify" onsubmit="return false;">
+          <div class="form-group">
+            <input type="password" id="txtVerifyPin" placeholder="請輸入 PIN 碼..." required autofocus autocomplete="current-password">
+            <div class="error-msg" id="lblPinError">PIN 碼錯誤，請重新輸入！</div>
+          </div>
+          
+          <div class="modal-actions">
+            <button type="button" class="btn-danger" id="btnClearSavedKeys">清除已儲存金鑰</button>
+            <button type="submit" class="btn-primary" id="btnSubmitPinVerify">確認解密</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dependencies -->
+  <script src="crypto.js"></script>
+  <script src="data.js"></script>
+  <script src="chart.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
