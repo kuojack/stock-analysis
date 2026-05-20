@@ -4,8 +4,8 @@
 
 ## Demo
 
-- GitHub Pages: https://kuojack.github.io/antigravity-trade/
-- GitHub Repository: https://github.com/kuojack/antigravity-trade
+- GitHub Pages: https://kuojack.github.io/stock-analysis/
+- GitHub Repository: https://github.com/kuojack/stock-analysis
 
 ## Features
 
@@ -56,7 +56,7 @@ index.html
 
 - Branch: `main`
 - Source path: `/`
-- Published URL: https://kuojack.github.io/antigravity-trade/
+- Published URL: https://kuojack.github.io/stock-analysis/
 
 更新網站時，提交並推送到 `main` 後，GitHub Pages 會自動重新部署。
 
