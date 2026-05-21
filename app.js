@@ -77,6 +77,12 @@ function initAppEvents() {
       document.querySelectorAll('.stock-item').forEach(el => el.classList.remove('active'));
       item.classList.add('active');
       loadStockData(code);
+
+      // On mobile, auto switch to charts tab after selecting stock
+      if (window.innerWidth <= 768) {
+        const chartsTabBtn = document.querySelector('.nav-tab-btn[data-tab="charts"]');
+        if (chartsTabBtn) chartsTabBtn.click();
+      }
     }
   });
 
@@ -202,6 +208,30 @@ function initAppEvents() {
   });
   document.getElementById('btnQuickAdvise').addEventListener('click', () => {
     askCoPilot("請針對此股票進行『綜合操作建議與風險診斷』，告訴我最合理的進場點、加碼點與跌破防守點，並說明操作策略。");
+  });
+
+  // Mobile Tab Switching
+  const tabBtns = document.querySelectorAll('.nav-tab-btn');
+  const mainLayout = document.querySelector('.main-layout');
+  
+  tabBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tab = btn.dataset.tab;
+      
+      // Update active tab buttons
+      tabBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      
+      // Update layout class for responsive switching
+      mainLayout.className = 'main-layout show-tab-' + tab;
+      
+      // If switching to charts tab on mobile, trigger chart canvas resize to prevent 0px canvas bug
+      if (tab === 'charts' && chartInstance) {
+        setTimeout(() => {
+          chartInstance.resize();
+        }, 50);
+      }
+    });
   });
 }
 

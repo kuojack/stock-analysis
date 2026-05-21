@@ -1609,6 +1609,12 @@ body {
 }
 
 /* Responsive Scaling rules */
+/* Hide mobile navigation by default on desktop */
+.mobile-nav-bar {
+  display: none;
+}
+
+/* Intermediate Tablet Scaling rules */
 @media (max-width: 1400px) {
   .dashboard-grid {
     grid-template-columns: repeat(6, 1fr);
@@ -1637,3 +1643,311 @@ body {
   .chart-wrapper { height: 300px; }
   .ticker-bar { display: none; }
 }
+
+/* ==========================================================================
+   📱 Premium Mobile App Layout Framework (width <= 768px)
+   ========================================================================== */
+@media (max-width: 768px) {
+  /* Lock page frame just like a real Native App */
+  body {
+    overflow: hidden !important;
+    height: 100vh !important;
+    height: 100dvh !important; /* Support modern dynamic viewport height */
+    position: fixed;
+    width: 100vw;
+  }
+  
+  .app-container {
+    height: 100vh !important;
+    height: 100dvh !important; /* Support modern dynamic viewport height */
+    width: 100vw !important;
+    overflow: hidden !important;
+  }
+
+  /* Shrink header slightly and align cleanly on mobile */
+  .main-header {
+    height: 56px !important;
+    padding: 0 10px !important;
+    gap: 8px !important;
+  }
+
+  .brand-text {
+    display: none !important; /* Hide text brand, leaving only glowing icon */
+  }
+
+  /* Shrink API lock button to minimal glowing dot key */
+  .btn-api-status {
+    padding: 8px !important;
+    border-radius: 50% !important;
+    width: 34px !important;
+    height: 34px !important;
+    display: flex !important;
+    align-items: center;
+    justify-content: center !important;
+  }
+  
+  .btn-api-status .api-status-text {
+    display: none !important; /* Hide descriptive key text */
+  }
+
+  /* Super compact responsive stock ticker bar */
+  .ticker-bar {
+    display: flex !important;
+    margin: 0 !important;
+    padding: 2px 6px !important;
+    gap: 6px !important;
+    border: none !important;
+    background: transparent !important;
+    flex-grow: 1 !important;
+    justify-content: space-around !important;
+    overflow: hidden;
+  }
+
+  .ticker-info {
+    display: flex !important;
+    align-items: center !important;
+    gap: 3px !important;
+  }
+
+  .stock-name {
+    font-size: 13px !important;
+    font-weight: 700 !important;
+  }
+
+  .stock-code {
+    font-size: 10px !important;
+    padding: 1px 4px !important;
+  }
+
+  .stock-industry {
+    display: none !important; /* Hide industry category to save space */
+  }
+
+  .price-container {
+    display: flex !important;
+    align-items: center !important;
+    gap: 3px !important;
+  }
+
+  .current-price {
+    font-size: 14px !important;
+    font-weight: 700 !important;
+  }
+
+  .price-change, .price-change-percent, .price-change-arrow {
+    font-size: 10px !important;
+  }
+
+  /* Hide raw details in mobile header */
+  .ticker-details, .ticker-extremes, .ticker-time {
+    display: none !important;
+  }
+
+  /* Set Main Layout height to clear space for the bottom tab nav */
+  .main-layout {
+    flex-direction: row !important;
+    height: calc(100vh - 56px - 60px) !important; /* Fallback */
+    height: calc(100dvh - 56px - 60px - env(safe-area-inset-bottom)) !important; /* Dynamic height with safe-area fallback */
+    overflow: hidden !important;
+    width: 100vw !important;
+  }
+
+  /* Hide all three sidebar columns by default on mobile */
+  .sidebar, .dashboard-grid, .ai-sidebar {
+    display: none !important;
+    width: 100% !important;
+    height: 100% !important;
+    overflow-y: auto !important;
+    border: none !important;
+    padding: 12px !important;
+    background-color: var(--bg-app) !important;
+    scrollbar-width: none; /* Hide scrollbars for app aesthetic */
+  }
+
+  .sidebar::-webkit-scrollbar, 
+  .dashboard-grid::-webkit-scrollbar, 
+  .ai-sidebar::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Dynamic CSS router triggered by JS class name */
+  .main-layout.show-tab-watchlist .sidebar {
+    display: flex !important;
+  }
+
+  .main-layout.show-tab-ai .ai-sidebar {
+    display: flex !important;
+  }
+
+  .main-layout.show-tab-charts .dashboard-grid,
+  .main-layout.show-tab-analysis .dashboard-grid {
+    display: grid !important;
+  }
+
+  /* Sidebar tweaks for mobile */
+  .sidebar {
+    gap: 16px !important;
+  }
+  
+  .info-card {
+    margin-top: 10px !important;
+  }
+
+  /* Dashboard Grid layout on mobile */
+  .dashboard-grid {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+    padding: 12px !important;
+  }
+
+  .card {
+    grid-column: span 1 !important;
+    width: 100% !important;
+  }
+
+  /* Charts tab display filters */
+  .main-layout.show-tab-charts .card {
+    display: none !important; /* Hide other cards */
+  }
+  
+  .main-layout.show-tab-charts .card-kline,
+  .main-layout.show-tab-charts .card-suggestions {
+    display: flex !important; /* Only show chart & suggestions */
+  }
+
+  .main-layout.show-tab-charts .card-kline {
+    height: 290px !important; /* Constrain K-line to leave space for suggestions */
+  }
+
+  .main-layout.show-tab-charts .chart-wrapper {
+    height: 240px !important;
+  }
+
+  .main-layout.show-tab-charts .suggestions-layout {
+    flex-direction: column !important;
+    gap: 12px !important;
+  }
+  
+  .main-layout.show-tab-charts .signal-gauge-wrapper {
+    border-left: none !important;
+    border-top: 1px solid var(--border-card);
+    padding-left: 0 !important;
+    padding-top: 12px !important;
+  }
+
+  /* Technical analysis data tab display filters */
+  .main-layout.show-tab-analysis .card {
+    display: flex !important; /* Display all data cards */
+  }
+  
+  .main-layout.show-tab-analysis .card-kline {
+    display: none !important; /* EXCEPT K-line chart (on chart tab) */
+  }
+  
+  .main-layout.show-tab-analysis .card-suggestions {
+    display: none !important; /* EXCEPT suggestions (on chart tab) */
+  }
+
+  /* Gauges inside AI sidebar on mobile */
+  .ai-sidebar {
+    flex-direction: column !important;
+    gap: 14px !important;
+  }
+  
+  .ai-dashboard-card {
+    padding: 12px !important;
+  }
+
+  .gauges-grid {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 10px !important;
+  }
+
+  .gemini-chat-card {
+    height: calc(100% - 190px) !important; /* Push chat down elegantly */
+    flex-grow: 1 !important;
+  }
+
+  /* Display mobile bottom tab nav fixed at bottom */
+  .mobile-nav-bar {
+    display: flex;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: calc(60px + env(safe-area-inset-bottom)) !important; /* Account for iOS Home Indicator */
+    background: rgba(10, 15, 27, 0.95);
+    border-top: 1px solid var(--border-card);
+    backdrop-filter: blur(25px);
+    z-index: 1000;
+    justify-content: space-around;
+    align-items: center;
+    padding-bottom: env(safe-area-inset-bottom) !important;
+  }
+
+  .nav-tab-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-dim);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    font-size: 10px;
+    font-weight: 500;
+    cursor: pointer;
+    width: 25%;
+    transition: color var(--transition-speed);
+    padding: 6px 0;
+  }
+
+  .nav-tab-btn svg {
+    width: 20px;
+    height: 20px;
+    transition: transform var(--transition-speed);
+  }
+
+  .nav-tab-btn:hover {
+    color: var(--text-muted);
+  }
+
+  .nav-tab-btn.active {
+    color: var(--color-highlight);
+  }
+
+  .nav-tab-btn.active svg {
+    transform: translateY(-2px);
+    filter: drop-shadow(0 0 6px rgba(10, 132, 255, 0.4));
+  }
+
+  /* Setup Dialog overlays sizing adjustments for mobile screen */
+  .modal-card {
+    width: 92% !important;
+    max-width: 420px !important;
+    padding: 16px 20px !important;
+  }
+
+  .modal-title {
+    font-size: 15px !important;
+  }
+
+  .form-group label {
+    font-size: 11px !important;
+  }
+
+  .form-group input {
+    font-size: 12px !important;
+    padding: 8px 10px !important;
+  }
+
+  /* Table scrollability and overflow protection on mobile */
+  .table-wrapper {
+    overflow-x: auto !important;
+    scrollbar-width: thin;
+  }
+  
+  .grid-table {
+    min-width: 380px !important; /* Prevent column squeezing */
+  }
+}
+
