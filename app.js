@@ -8,6 +8,8 @@
 let activeFinmindKey = '';
 let activeGeminiKey = '';
 let activeStockCode = '2360'; // Default active stock (Chroma 致茂)
+let activeStockName = '致茂';  // Default active stock name
+let activeStockChange = '+3.16%'; // Default active stock change percent
 let activeStockData = null;   // Active calculated stock payload
 let activeChipData = null;    // Active institutional chips payload
 
@@ -65,8 +67,19 @@ function initAppEvents() {
     const deleteBtn = e.target.closest('.btn-delete-stock');
     if (deleteBtn) {
       e.stopPropagation(); // Avoid triggering parent item click
+      e.preventDefault();  // Stop default action and prevent touch click penetration
       const code = deleteBtn.dataset.code;
-      removeFromWatchlist(code);
+      
+      // Visual feedback: briefly fade out before removing
+      const itemEl = deleteBtn.closest('.stock-item');
+      if (itemEl) {
+        itemEl.style.opacity = '0.3';
+        itemEl.style.transform = 'scale(0.95)';
+      }
+      
+      setTimeout(() => {
+        removeFromWatchlist(code);
+      }, 100);
       return;
     }
 
@@ -85,6 +98,20 @@ function initAppEvents() {
       }
     }
   });
+
+  // Favorite Star Switch Button Click Event
+  const btnFav = document.getElementById('btnFavStock');
+  if (btnFav) {
+    btnFav.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isFavorited = watchlist.some(item => item.code === activeStockCode);
+      if (isFavorited) {
+        removeFromWatchlist(activeStockCode);
+      } else {
+        addToWatchlist(activeStockCode, activeStockName, activeStockChange);
+      }
+    });
+  }
 
   // Chart toggles
   document.getElementById('btnToggleBB').addEventListener('click', (e) => {
@@ -305,9 +332,13 @@ async function loadStockData(stockId) {
   const priceDiffPct = (priceDiff / prevBar.close) * 100;
   const isUp = priceDiff >= 0;
 
-  // Add/Update Watchlist
+  // Store active stock metadata
   const changeText = (priceDiffPct >= 0 ? '+' : '') + priceDiffPct.toFixed(2) + '%';
-  addToWatchlist(stockId, result.metadata.name, changeText);
+  activeStockName = result.metadata.name;
+  activeStockChange = changeText;
+
+  // Dynamically update the header favorite star highlight based on current watchlist status
+  updateFavStarState(stockId);
 
   const hdrPrice = document.getElementById('hdrCurrentPrice');
   hdrPrice.innerText = latestBar.close.toFixed(2);
@@ -1026,10 +1057,26 @@ function addToWatchlist(code, name, change) {
   }
   localStorage.setItem('saved_watchlist', JSON.stringify(watchlist));
   renderWatchlist();
+  
+  // Keep favorite star highlighted
+  updateFavStarState(code);
 }
 
 function removeFromWatchlist(code) {
   watchlist = watchlist.filter(item => item.code !== code);
   localStorage.setItem('saved_watchlist', JSON.stringify(watchlist));
   renderWatchlist();
+  
+  // Dynamically update favorite star in header in case the active stock is removed
+  updateFavStarState(activeStockCode);
+}
+
+/**
+ * Toggle active highlight state of the top header favorite star button based on watchlist inclusion
+ */
+function updateFavStarState(code) {
+  const btnFav = document.getElementById('btnFavStock');
+  if (!btnFav) return;
+  const isFavorited = watchlist.some(item => item.code === code);
+  btnFav.classList.toggle('active', isFavorited);
 }

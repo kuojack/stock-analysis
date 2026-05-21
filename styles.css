@@ -251,6 +251,55 @@ input, textarea, select {
   color: var(--text-muted);
 }
 
+/* Favorite/Star Stock Button Styling */
+.btn-fav-stock {
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border-radius: 50%;
+  transition: all var(--transition-speed);
+  margin-left: 6px;
+}
+
+.btn-fav-stock svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: var(--text-dim);
+  transition: all var(--transition-speed);
+}
+
+.btn-fav-stock:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.btn-fav-stock:hover svg {
+  stroke: var(--color-warning);
+  transform: scale(1.15);
+}
+
+/* Active Glowing Favorite State */
+.btn-fav-stock.active svg {
+  fill: var(--color-warning);
+  stroke: var(--color-warning);
+  filter: drop-shadow(0 0 8px rgba(253, 214, 10, 0.8));
+  animation: pulse-glow-star 2s infinite alternate;
+}
+
+@keyframes pulse-glow-star {
+  from {
+    filter: drop-shadow(0 0 5px rgba(253, 214, 10, 0.6));
+  }
+  to {
+    filter: drop-shadow(0 0 12px rgba(253, 214, 10, 0.95));
+  }
+}
+
 /* API Status Indicator Button */
 .btn-api-status {
   background: rgba(18, 26, 47, 0.8);
