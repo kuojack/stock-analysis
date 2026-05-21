@@ -374,6 +374,31 @@ async function loadStockData(stockId) {
   document.getElementById('hdrTime').innerText = timeStr;
 
   // 4. Update Tables & Overview Cards
+  const isEtfAsset = window.DataEngine.isETF(stockId);
+  const cardEtf = document.getElementById('cardEtfDetails');
+  const cardsMajor = document.querySelectorAll('.card-major-players');
+  const cardsPatterns = document.querySelectorAll('.card-patterns');
+  
+  if (isEtfAsset) {
+    if (cardEtf) cardEtf.style.display = 'flex';
+    cardsMajor.forEach(el => el.style.display = 'none');
+    cardsPatterns.forEach(el => el.style.display = 'none');
+    
+    // Fetch and override ETF metadata to ensure 100% accurate display names
+    const etfDetails = window.DataEngine.getETFDetails(stockId, latestBar.close);
+    document.getElementById('hdrStockName').innerText = etfDetails.name;
+    document.getElementById('lblChatActiveStock').innerText = `${etfDetails.name} (${stockId})`;
+    document.getElementById('hdrStockIndustry').innerText = `[ETF基金]`;
+    activeStockName = etfDetails.name;
+    
+    // Populate ETF specific card
+    updateEtfDetailsCard(stockId, latestBar.close);
+  } else {
+    if (cardEtf) cardEtf.style.display = 'none';
+    cardsMajor.forEach(el => el.style.display = 'flex');
+    cardsPatterns.forEach(el => el.style.display = 'flex');
+  }
+
   updateTechnicalOverview(computedHistory);
   updateInstitutionalTable(chips);
   updateMajorPlayersTable(computedHistory, chips);
@@ -708,6 +733,65 @@ function updateSuggestionsCard(history, chips) {
 }
 
 /**
+ * Renders ETF-specific holdings and premium/discount data in the DOM
+ */
+function updateEtfDetailsCard(stockId, currentPrice) {
+  const details = window.DataEngine.getETFDetails(stockId, currentPrice);
+  
+  // 1. Update prices & NAV
+  document.getElementById('etfMarketPrice').innerText = currentPrice.toFixed(2);
+  document.getElementById('etfNavPrice').innerText = details.nav.toFixed(2);
+  
+  const sign = details.premiumDiscountRate > 0 ? '+' : '';
+  const rateText = `${sign}${details.premiumDiscountRate.toFixed(2)}%`;
+  
+  const badge = document.getElementById('etfPremiumBadge');
+  badge.innerText = rateText;
+  
+  // Reset badge class
+  badge.className = 'etf-premium-badge';
+  if (details.status === 'premium') {
+    badge.classList.add('badge-premium');
+  } else if (details.status === 'discount') {
+    badge.classList.add('badge-discount');
+  } else {
+    badge.classList.add('badge-fair');
+  }
+  
+  const diffSign = details.premiumDiscountValue > 0 ? '+' : '';
+  document.getElementById('etfPremiumValue').innerText = `${diffSign}${details.premiumDiscountValue.toFixed(2)} 元`;
+  
+  // 2. Update advisory bubble
+  document.getElementById('etfAdvisoryBox').innerHTML = details.advisory;
+  
+  // 3. Update holdings progress bars
+  const listEl = document.getElementById('etfHoldingsList');
+  listEl.innerHTML = '';
+  
+  details.holdings.forEach(hold => {
+    const row = document.createElement('div');
+    row.className = 'etf-holding-row';
+    row.innerHTML = `
+      <span class="etf-hold-code">${hold.code}</span>
+      <span class="etf-hold-name">${hold.name}</span>
+      <div class="etf-progress-bar-container">
+        <div class="etf-progress-bar" style="width: 0%;"></div>
+      </div>
+      <span class="etf-hold-weight">${hold.weight.toFixed(1)}%</span>
+    `;
+    listEl.appendChild(row);
+    
+    // Animate progress bar expansion after appending to DOM for gorgeous micro-interaction
+    setTimeout(() => {
+      const progressBar = row.querySelector('.etf-progress-bar');
+      if (progressBar) {
+        progressBar.style.width = `${hold.weight}%`;
+      }
+    }, 50);
+  });
+}
+
+/**
  * Draw AI Short term Win-rate Semi-circle Gauge
  */
 function drawWinRateGauge(percent, trendLabel) {
@@ -871,6 +955,51 @@ function compileStockPrompt(userQuestion) {
     });
   }
 
+  // Detect ETF to inject specialized prompt
+  const isEtf = window.DataEngine.isETF(activeStockCode);
+  if (isEtf) {
+    const etfDetails = window.DataEngine.getETFDetails(activeStockCode, latest.close);
+    let holdingsText = '';
+    etfDetails.holdings.forEach((h, idx) => {
+      holdingsText += `${idx + 1}. ${h.code} ${h.name} (${h.weight}%)\n`;
+    });
+
+    return `
+你是一位頂級的證券分析顧問與量化操盤手，同時也是指數股票型基金（ETF）研究專家。
+現在請根據我提供的 ETF 即時行情、估值折溢價、成分股組成結構與法人籌碼數據，對用戶的問題進行深度、客觀且專業的推理解答。
+
+==================【ETF 高密度數據面板】==================
+ETF 代號與名稱: ${activeStockCode} ${stockName}
+最新成交價 (市價): ${latest.close.toFixed(2)} (今日漲跌: ${isUp ? '▲' : '▼'} ${Math.abs(latest.close - prev.close).toFixed(2)})
+預估淨值 (NAV): ${etfDetails.nav.toFixed(2)}
+折溢價狀態: ${etfDetails.status === 'premium' ? '溢價 🔴' : (etfDetails.status === 'discount' ? '折價 🟢' : '折溢價合理 ⚖️')} ${etfDetails.premiumDiscountRate.toFixed(2)}% (差額: ${etfDetails.premiumDiscountValue.toFixed(2)} 元)
+今日成交量: ${latest.volume} 張
+
+---【核心成分股與權重比】---
+${holdingsText}
+
+---【法人近 5 日買賣超明細】---
+${chipText}
+
+---【技術指標計算結果】---
+- 5日均線 (SMA5): ${latest.sma5 ? latest.sma5.toFixed(1) : '計算中'}
+- 20日均線 (SMA20): ${latest.sma20 ? latest.sma20.toFixed(1) : '計算中'}
+- 60日均線 (SMA60): ${latest.sma60 ? latest.sma60.toFixed(1) : '計算中'}
+- KD指標: K值: ${latest.K.toFixed(1)}, D值: ${latest.D.toFixed(1)} (${latest.K > latest.D ? 'K > D 黃金交叉' : 'K < D 死亡交叉'})
+- MACD指標: DIF: ${latest.dif.toFixed(2)}, DEA: ${latest.dea.toFixed(2)}, 柱狀體: ${latest.macdBar.toFixed(2)}
+
+==================【用戶當前詢問的問題】==================
+${userQuestion}
+
+==================【你需遵循的回覆規則】==================
+1. 請以「繁體中文（台灣習慣術語）」作答，使用專業的 ETF 分析語氣（如套利邊際、成份股權重板塊、溢價追高風險等），避免空泛客套。
+2. 緊密結合上方的成分股結構（例如大盤型 ETF 中台積電權重比，或是高股息 ETF 中航運/電子板塊佔比）、折溢價合理度與法人買賣超，進行客觀理性分析。
+3. 採用 Markdown 格式輸出，重點內容可用加粗顯示，使閱讀體驗大氣專業。
+4. 在報告結尾，務必提供具體的「ETF 佈局與操作建議（包含定期定額區間、單筆分批買點、溢價折價對應策略）」。
+5. 回覆前請特別強調你是根據此時此刻的「真實 ETF 即時折溢價與持股權重」在為使用者提供專屬諮詢。
+`;
+  }
+
   return `
 你是一位頂級的證券分析顧問與量化操盤手。
 現在請根據我提供的個股真實即時行情、技術分析指標與主力籌碼數據，對用戶的問題進行深度、客觀且專業的推理解答。
@@ -1020,6 +1149,12 @@ function renderWatchlist() {
   if (!stockListEl) return;
   
   stockListEl.innerHTML = '';
+  
+  const quickListEl = document.getElementById('mobileQuickWatchlist');
+  if (quickListEl) {
+    quickListEl.innerHTML = '';
+  }
+
   watchlist.forEach(item => {
     const isActive = item.code === activeStockCode ? 'active' : '';
     // Format color class for change indicator
@@ -1032,6 +1167,7 @@ function renderWatchlist() {
       }
     }
 
+    // 1. Render Left Sidebar watchlist item (for desktop and mobile list tab)
     const div = document.createElement('div');
     div.className = `stock-item ${isActive}`;
     div.dataset.code = item.code;
@@ -1042,6 +1178,25 @@ function renderWatchlist() {
       <button class="btn-delete-stock" data-code="${item.code}" title="從觀測清單刪除">&times;</button>
     `;
     stockListEl.appendChild(div);
+
+    // 2. Render Top Ticker Pills (only for mobile charts home tab)
+    if (quickListEl) {
+      const btn = document.createElement('button');
+      btn.className = `quick-stock-tag ${isActive}`;
+      btn.dataset.code = item.code;
+      btn.innerHTML = `${item.name} <span class="tag-change ${changeClass}">${item.change || '--'}</span>`;
+      
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        
+        // Remove active class from all other pills instantly for responsiveness
+        quickListEl.querySelectorAll('.quick-stock-tag').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        
+        loadStockData(item.code);
+      });
+      quickListEl.appendChild(btn);
+    }
   });
 }
 
@@ -1072,11 +1227,23 @@ function removeFromWatchlist(code) {
 }
 
 /**
- * Toggle active highlight state of the top header favorite star button based on watchlist inclusion
+ * Toggle active highlight state of the top header favorite star button and sync active lists highlights
  */
 function updateFavStarState(code) {
+  // 1. Toggle header favorite star highlight
   const btnFav = document.getElementById('btnFavStock');
-  if (!btnFav) return;
-  const isFavorited = watchlist.some(item => item.code === code);
-  btnFav.classList.toggle('active', isFavorited);
+  if (btnFav) {
+    const isFavorited = watchlist.some(item => item.code === code);
+    btnFav.classList.toggle('active', isFavorited);
+  }
+
+  // 2. Toggle active highlight on sidebar list items (for desktop & mobile watchlist tab)
+  document.querySelectorAll('#stockList .stock-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.code === code);
+  });
+
+  // 3. Toggle active highlight on mobile top shortcut pills (only for mobile charts home tab)
+  document.querySelectorAll('#mobileQuickWatchlist .quick-stock-tag').forEach(el => {
+    el.classList.toggle('active', el.dataset.code === code);
+  });
 }

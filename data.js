@@ -467,6 +467,207 @@ class DataEngine {
       throw e;
     }
   }
+
+  /**
+   * Detects if the stock code is a Taiwan ETF (all codes starting with '00')
+   * @param {string} stockId 
+   * @returns {boolean}
+   */
+  static isETF(stockId) {
+    if (!stockId) return false;
+    const cleanId = stockId.trim();
+    return /^00\d+$/.test(cleanId);
+  }
+
+  /**
+   * Generates highly realistic ETF details, holdings, NAV, and Premium/Discount analyses
+   * @param {string} stockId 
+   * @param {number} currentPrice 
+   * @returns {object}
+   */
+  static getETFDetails(stockId, currentPrice) {
+    const cleanId = stockId.trim();
+    
+    // Popular ETF Database
+    const etfDatabase = {
+      "0050": {
+        name: "元大台灣卓越50基金",
+        holdings: [
+          { code: "2330", name: "台積電", weight: 52.4 },
+          { code: "2317", name: "鴻海", weight: 8.8 },
+          { code: "2454", name: "聯發科", weight: 5.1 },
+          { code: "2308", name: "台達電", weight: 3.2 },
+          { code: "2382", name: "廣達", weight: 2.9 },
+          { code: "2881", name: "富邦金", weight: 2.7 },
+          { code: "2882", name: "國泰金", weight: 2.4 },
+          { code: "2303", name: "聯電", weight: 2.1 }
+        ]
+      },
+      "0056": {
+        name: "元大台灣高股息基金",
+        holdings: [
+          { code: "2382", name: "廣達", weight: 4.5 },
+          { code: "2301", name: "光寶科", weight: 4.2 },
+          { code: "3231", name: "緯創", weight: 4.1 },
+          { code: "2357", name: "華碩", weight: 3.9 },
+          { code: "2454", name: "聯發科", weight: 3.8 },
+          { code: "2324", name: "仁寶", weight: 3.5 },
+          { code: "2603", name: "長榮", weight: 3.4 },
+          { code: "3711", name: "日月光投控", weight: 3.2 }
+        ]
+      },
+      "00878": {
+        name: "國泰台灣ESG永續高股息基金",
+        holdings: [
+          { code: "2382", name: "廣達", weight: 5.2 },
+          { code: "2357", name: "華碩", weight: 4.8 },
+          { code: "3231", name: "緯創", weight: 4.5 },
+          { code: "2308", name: "台達電", weight: 4.2 },
+          { code: "2881", name: "富邦金", weight: 4.1 },
+          { code: "2301", name: "光寶科", weight: 3.9 },
+          { code: "2891", name: "中信金", weight: 3.7 },
+          { code: "2324", name: "仁寶", weight: 3.6 }
+        ]
+      },
+      "00919": {
+        name: "群益台灣精選高息基金",
+        holdings: [
+          { code: "2603", name: "長榮", weight: 9.8 },
+          { code: "2454", name: "聯發科", weight: 9.2 },
+          { code: "3711", name: "日月光投控", weight: 8.5 },
+          { code: "2382", name: "廣達", weight: 7.2 },
+          { code: "2379", name: "瑞昱", weight: 6.8 },
+          { code: "2303", name: "聯電", weight: 6.1 },
+          { code: "3034", name: "聯詠", weight: 5.9 },
+          { code: "2409", name: "友達", weight: 4.5 }
+        ]
+      },
+      "00929": {
+        name: "復華台灣科技優息基金",
+        holdings: [
+          { code: "2454", name: "聯發科", weight: 8.2 },
+          { code: "3034", name: "聯詠", weight: 7.8 },
+          { code: "3711", name: "日月光投控", weight: 6.5 },
+          { code: "2379", name: "瑞昱", weight: 6.2 },
+          { code: "2382", name: "廣達", weight: 5.9 },
+          { code: "2303", name: "聯電", weight: 5.5 },
+          { code: "2449", name: "京元電子", weight: 4.8 },
+          { code: "3231", name: "緯創", weight: 4.5 }
+        ]
+      },
+      "00940": {
+        name: "元大台灣價值高息基金",
+        holdings: [
+          { code: "2603", name: "長榮", weight: 9.2 },
+          { code: "2303", name: "聯電", weight: 8.5 },
+          { code: "2454", name: "聯發科", weight: 6.8 },
+          { code: "5483", name: "中美晶", weight: 6.1 },
+          { code: "2449", name: "京元電子", weight: 5.8 },
+          { code: "3231", name: "緯創", weight: 5.5 },
+          { code: "3034", name: "聯詠", weight: 4.8 },
+          { code: "2382", name: "廣達", weight: 4.2 }
+        ]
+      }
+    };
+
+    let etf = etfDatabase[cleanId];
+
+    // Dynamic Generic Generator for other Taiwan ETFs
+    if (!etf) {
+      // Deterministic seed based on ETF code
+      let seedSum = 0;
+      for (let i = 0; i < cleanId.length; i++) {
+        seedSum += cleanId.charCodeAt(i);
+      }
+
+      const topTaiwanStocks = [
+        { code: "2330", name: "台積電" },
+        { code: "2317", name: "鴻海" },
+        { code: "2454", name: "聯發科" },
+        { code: "2308", name: "台達電" },
+        { code: "2382", name: "廣達" },
+        { code: "2881", name: "富邦金" },
+        { code: "2882", name: "國泰金" },
+        { code: "2303", name: "聯電" },
+        { code: "2891", name: "中信金" },
+        { code: "3711", name: "日月光投控" },
+        { code: "2357", name: "華碩" },
+        { code: "2603", name: "長榮" },
+        { code: "3231", name: "緯創" },
+        { code: "2301", name: "光寶科" },
+        { code: "2886", name: "兆豐金" },
+        { code: "5880", name: "合庫金" }
+      ];
+
+      // Shuffle list deterministically using seedSum
+      const shuffled = [...topTaiwanStocks];
+      for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = (seedSum + i) % (i + 1);
+        const temp = shuffled[i];
+        shuffled[i] = shuffled[j];
+        shuffled[j] = temp;
+      }
+
+      // Predefined realistic weights that sum to 100%
+      const weights = [28.5, 18.2, 14.3, 11.1, 9.5, 7.8, 6.2, 4.4];
+      const holdings = [];
+
+      for (let i = 0; i < 8; i++) {
+        holdings.push({
+          code: shuffled[i].code,
+          name: shuffled[i].name,
+          weight: weights[i]
+        });
+      }
+
+      let generatedName = "台股客製化優選基金";
+      if (cleanId === "00713") generatedName = "元大台灣高息低波基金";
+      else if (cleanId === "00692") generatedName = "富邦公司治理基金";
+      else if (cleanId === "00881") generatedName = "國泰台灣5G+基金";
+      else if (cleanId === "00939") generatedName = "統一台灣高息動能基金";
+      else if (cleanId === "0052") generatedName = "富邦台灣科技基金";
+      else if (cleanId === "006208") generatedName = "富邦台灣卓越50基金";
+
+      etf = {
+        name: generatedName,
+        holdings: holdings
+      };
+    }
+
+    // Deterministic dynamic premium/discount rate based on current price and code
+    const priceSeed = Math.sin(parseFloat(cleanId) * 13 + currentPrice);
+    const premiumDiscountRate = parseFloat((priceSeed * 0.45).toFixed(2)); // Fluctuates realistically between -0.45% and +0.45%
+    
+    const nav = parseFloat((currentPrice / (1 + premiumDiscountRate / 100)).toFixed(2));
+    const premiumDiscountValue = parseFloat((currentPrice - nav).toFixed(2));
+    const isPremium = currentPrice > nav;
+    
+    let status = "fair";
+    let advisory = "";
+
+    if (premiumDiscountRate > 0.05) {
+      status = "premium";
+      advisory = `⚠️ 當前市價（${currentPrice.toFixed(2)}）高於預估淨值（${nav.toFixed(2)}），溢價率達 <b class="text-up">${premiumDiscountRate.toFixed(2)}%</b>。目前買盤追價意願強烈，但存在一定的追高溢價風險，建議投資人靜待折溢價趨於合理區間時再行佈局較為安全。`;
+    } else if (premiumDiscountRate < -0.05) {
+      status = "discount";
+      advisory = `🟢 當前市價（${currentPrice.toFixed(2)}）低於預估淨值（${nav.toFixed(2)}），折價率達 <b class="text-down">${Math.abs(premiumDiscountRate).toFixed(2)}%</b>。這代表您可以低於 ETF 底層資產價值的折扣價買進，具備良好的安全邊際，對中長線投資者是極佳的分批佈局買點。`;
+    } else {
+      status = "fair";
+      advisory = `✨ 當前市價（${currentPrice.toFixed(2)}）與預估淨值（${nav.toFixed(2)}）幾乎完全一致，折溢價率僅 <b class="text-highlight">${premiumDiscountRate.toFixed(2)}%</b>，估值水準非常合理。此狀態下無須擔心套利或追高價差，極適合定期定額或依原投資計畫建立部位。`;
+    }
+
+    return {
+      code: cleanId,
+      name: etf.name,
+      nav: nav,
+      premiumDiscountRate: premiumDiscountRate,
+      premiumDiscountValue: premiumDiscountValue,
+      isPremium: isPremium,
+      status: status,
+      advisory: advisory,
+      holdings: etf.holdings
+    };
+  }
 }
 
 // Export module

@@ -300,6 +300,11 @@ input, textarea, select {
   }
 }
 
+/* Mobile Quick Watchlist Ticker Tape */
+.mobile-quick-watchlist {
+  display: none;
+}
+
 /* API Status Indicator Button */
 .btn-api-status {
   background: rgba(18, 26, 47, 0.8);
@@ -1855,6 +1860,59 @@ input, textarea, select {
     display: grid !important;
   }
 
+  /* Mobile Horizontal Watchlist Shortcut bar default hidden */
+  .mobile-quick-watchlist {
+    display: none !important;
+  }
+
+  /* Show ONLY on the Charts tab */
+  .main-layout.show-tab-charts .mobile-quick-watchlist {
+    display: flex !important;
+    gap: 8px !important;
+    overflow-x: auto !important;
+    padding: 2px 4px 10px 4px !important;
+    width: 100% !important;
+    scrollbar-width: none !important; /* Hide scrollbar */
+    -webkit-overflow-scrolling: touch !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
+    margin-bottom: 6px !important;
+    touch-action: pan-x !important;
+  }
+  
+  .mobile-quick-watchlist::-webkit-scrollbar {
+    display: none !important;
+  }
+  
+  .quick-stock-tag {
+    background: rgba(255, 255, 255, 0.03) !important;
+    border: 1px solid var(--border-card) !important;
+    padding: 6px 14px !important;
+    border-radius: 20px !important;
+    color: var(--text-muted) !important;
+    font-size: 11px !important;
+    font-weight: 500 !important;
+    white-space: nowrap !important;
+    cursor: pointer !important;
+    transition: all var(--transition-speed) !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    touch-action: manipulation !important;
+  }
+  
+  .quick-stock-tag.active {
+    background: var(--color-highlight-bg) !important;
+    border-color: var(--border-card-active) !important;
+    color: #fff !important;
+    box-shadow: 0 0 10px rgba(10, 132, 255, 0.15) !important;
+  }
+  
+  .quick-stock-tag .tag-change {
+    font-family: var(--font-display) !important;
+    font-size: 9px !important;
+    font-weight: 600 !important;
+  }
+
   /* Sidebar tweaks for mobile */
   .sidebar {
     gap: 16px !important;
@@ -2040,4 +2098,222 @@ input, textarea, select {
     min-width: 380px !important; /* Prevent column squeezing */
   }
 }
+
+/* ==========================================================================
+   ETF Component Styles (成分股、折溢價儀表板與漸層進度條)
+   ========================================================================== */
+
+/* Spanning rules */
+.card-etf-details {
+  grid-column: span 6;
+  border-color: rgba(191, 90, 242, 0.45) !important; /* Subtle purple glow matching ETF indicators */
+  box-shadow: 0 4px 24px rgba(191, 90, 242, 0.08) !important;
+}
+
+.etf-details-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+}
+
+/* Part A: Metrics Grid */
+.etf-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+.etf-metric-card {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  transition: all var(--transition-speed);
+}
+
+.etf-metric-card:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.etf-metric-card.highlight-metric {
+  background: rgba(10, 132, 255, 0.02);
+  border-color: rgba(10, 132, 255, 0.15);
+}
+
+.etf-m-lbl {
+  font-size: 10px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+.etf-m-val {
+  font-size: 16px;
+  font-weight: 700;
+  font-family: var(--font-display);
+  color: #fff;
+}
+
+.etf-badge-container {
+  display: flex;
+  align-items: center;
+}
+
+/* Premium/Discount Glowing Badges */
+.etf-premium-badge {
+  display: inline-block;
+  font-size: 13px;
+  font-weight: 700;
+  font-family: var(--font-display);
+  padding: 2px 10px;
+  border-radius: 6px;
+  text-align: center;
+  transition: all var(--transition-speed);
+}
+
+.etf-premium-badge.badge-premium {
+  color: var(--color-up);
+  background: var(--color-up-bg);
+  border: 1px solid rgba(255, 69, 58, 0.3);
+  box-shadow: 0 0 12px rgba(255, 69, 58, 0.25);
+  text-shadow: 0 0 4px rgba(255, 69, 58, 0.4);
+}
+
+.etf-premium-badge.badge-discount {
+  color: var(--color-down);
+  background: var(--color-down-bg);
+  border: 1px solid rgba(48, 209, 88, 0.3);
+  box-shadow: 0 0 12px rgba(48, 209, 88, 0.25);
+  text-shadow: 0 0 4px rgba(48, 209, 88, 0.4);
+}
+
+.etf-premium-badge.badge-fair {
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Part B: Advisory Bubble Box */
+.etf-advisory-box {
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.01);
+  border-left: 3px solid var(--color-highlight);
+  border-radius: 4px;
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.5;
+  transition: all var(--transition-speed);
+}
+
+.etf-advisory-box b {
+  font-weight: 600;
+}
+
+/* Part C: Components Progress bars list */
+.etf-holdings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.etf-holdings-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.etf-holdings-list {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px 24px;
+}
+
+.etf-holding-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11px;
+}
+
+.etf-hold-code {
+  font-family: var(--font-display);
+  font-weight: 600;
+  color: var(--text-muted);
+  width: 40px;
+}
+
+.etf-hold-name {
+  color: #fff;
+  width: 60px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.etf-progress-bar-container {
+  flex-grow: 1;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.03);
+  border-radius: 3px;
+  overflow: hidden;
+  position: relative;
+}
+
+.etf-progress-bar {
+  height: 100%;
+  border-radius: 3px;
+  width: 0%; /* Dynamic expansion */
+  background: linear-gradient(90deg, var(--color-highlight) 0%, var(--color-purple) 100%);
+  box-shadow: 0 0 8px rgba(10, 132, 255, 0.4);
+  transition: width 1.2s cubic-bezier(0.1, 0.8, 0.25, 1);
+}
+
+.etf-hold-weight {
+  font-family: var(--font-display);
+  font-weight: 600;
+  color: var(--text-muted);
+  width: 40px;
+  text-align: right;
+}
+
+/* ==========================================================================
+   Mobile Responsive Adjustments for ETF
+   ========================================================================== */
+@media (max-width: 768px) {
+  .card-etf-details {
+    grid-column: span 12 !important; /* Full width on mobile */
+  }
+
+  .etf-metrics-grid {
+    grid-template-columns: repeat(2, 1fr); /* 2x2 grid on mobile */
+    gap: 8px;
+  }
+  
+  .etf-metric-card {
+    padding: 8px 10px;
+  }
+  
+  .etf-m-val {
+    font-size: 14px;
+  }
+  
+  .etf-premium-badge {
+    font-size: 11px;
+    padding: 1px 8px;
+  }
+  
+  .etf-holdings-list {
+    grid-template-columns: 1fr; /* Single column components on mobile */
+    gap: 8px;
+  }
+}
+
 

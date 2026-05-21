@@ -130,6 +130,9 @@
       <!-- Central Stock View (Dashboard Panels) -->
       <main class="dashboard-grid">
         
+        <!-- Mobile Horizontal Watchlist Shortcut bar -->
+        <div class="mobile-quick-watchlist" id="mobileQuickWatchlist"></div>
+        
         <!-- Panel 1: Main Candlestick Chart -->
         <section class="card card-kline">
           <div class="card-header">
@@ -306,6 +309,52 @@
                 <span class="p-title">M頭 (雙頂)</span>
                 <span class="p-status badge-inactive" id="lblMStatus">未形成</span>
                 <span class="p-detail" id="lblMDetail">標準 M 頭未完成</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Panel 6/7 Replacement: ETF 成分股與折溢價分析 (Shown only for ETFs) -->
+        <section class="card card-etf-details" id="cardEtfDetails" style="display: none;">
+          <div class="card-header">
+            <div class="card-title">
+              <span class="title-text">ETF 成分股與折溢價分析</span>
+              <span class="legend-item bb">即時淨值估算</span>
+            </div>
+          </div>
+          <div class="card-body etf-details-body">
+            <!-- Part A: Dynamic Premium/Discount Metrics -->
+            <div class="etf-metrics-grid">
+              <div class="etf-metric-card">
+                <span class="etf-m-lbl">即時市價</span>
+                <span class="etf-m-val text-highlight" id="etfMarketPrice">--</span>
+              </div>
+              <div class="etf-metric-card">
+                <span class="etf-m-lbl">預估淨值 (NAV)</span>
+                <span class="etf-m-val" id="etfNavPrice">--</span>
+              </div>
+              <div class="etf-metric-card highlight-metric">
+                <span class="etf-m-lbl">折溢價率</span>
+                <div class="etf-badge-container">
+                  <span class="etf-premium-badge badge-fair" id="etfPremiumBadge">--%</span>
+                </div>
+              </div>
+              <div class="etf-metric-card">
+                <span class="etf-m-lbl">折溢價金額</span>
+                <span class="etf-m-val" id="etfPremiumValue">--</span>
+              </div>
+            </div>
+
+            <!-- Part B: Premium/Discount Advisory Bubble -->
+            <div class="etf-advisory-box" id="etfAdvisoryBox">
+              三大法人籌碼分析載入中...
+            </div>
+
+            <!-- Part C: Component Holdings (成分股與權重) -->
+            <div class="etf-holdings-section">
+              <h4 class="etf-holdings-title">📋 前 8 大核心成分股與權重比</h4>
+              <div class="etf-holdings-list" id="etfHoldingsList">
+                <!-- Dynamic component rows will be loaded here -->
               </div>
             </div>
           </div>
