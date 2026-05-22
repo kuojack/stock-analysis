@@ -590,6 +590,7 @@ async function loadStockData(stockId) {
   updatePatternsCard(computedHistory);
   updateIndicatorsTable(latestBar);
   updateSuggestionsCard(computedHistory, chips);
+  updateProfileAnalysisCard(stockId);
 }
 
 /**
@@ -1502,4 +1503,74 @@ function updateFavStarState(code) {
   document.querySelectorAll('#mobileQuickWatchlist .quick-stock-tag').forEach(el => {
     el.classList.toggle('active', el.dataset.code === code);
   });
+}
+
+/**
+ * Renders Stock/ETF profile details and industry allocation progress bars
+ */
+function updateProfileAnalysisCard(stockId) {
+  const profile = window.DataEngine.getStockProfile(stockId);
+  const isEtf = profile.isEtf;
+  
+  // 1. Update Title dynamically
+  const cardTitle = document.getElementById('lblProfileCardTitle');
+  if (cardTitle) {
+    cardTitle.innerText = isEtf ? '📊 ETF 基本面與產業配置比重' : '📊 個股基本面與產業配置分析';
+  }
+
+  // 2. Populate details list (Left Column)
+  const detailsList = document.getElementById('listProfileDetails');
+  if (detailsList) {
+    detailsList.innerHTML = '';
+    
+    const addDetailRow = (label, value) => {
+      const li = document.createElement('li');
+      li.innerHTML = `
+        <span class="label">${label}</span>
+        <span class="value font-weight-bold" style="text-align: right;">${value}</span>
+      `;
+      detailsList.appendChild(li);
+    };
+
+    if (isEtf) {
+      addDetailRow('基金經理人', profile.manager);
+      addDetailRow('基金規模', profile.size);
+      addDetailRow('上市成立日期', profile.listedDate);
+      addDetailRow('配息頻率', profile.payout);
+      addDetailRow('追蹤指數', `<span class="text-highlight" title="${profile.indexOrProducts}">${profile.indexOrProducts}</span>`);
+    } else {
+      addDetailRow('董事長 / 總裁', profile.manager);
+      addDetailRow('實收資本額', profile.size);
+      addDetailRow('上市日期', profile.listedDate);
+      addDetailRow('股利配息頻率', profile.payout);
+      addDetailRow('主要經營業務', `<span class="text-highlight" title="${profile.indexOrProducts}">${profile.indexOrProducts}</span>`);
+    }
+  }
+
+  // 3. Populate industry progress list (Right Column)
+  const industryListEl = document.getElementById('profileIndustryList');
+  if (industryListEl) {
+    industryListEl.innerHTML = '';
+    
+    profile.industries.forEach(ind => {
+      const row = document.createElement('div');
+      row.className = 'profile-progress-row';
+      row.innerHTML = `
+        <span class="profile-ind-name" title="${ind.name}">${ind.name}</span>
+        <div class="profile-progress-bar-container">
+          <div class="profile-progress-bar" style="width: 0%;"></div>
+        </div>
+        <span class="profile-ind-weight">${ind.weight.toFixed(1)}%</span>
+      `;
+      industryListEl.appendChild(row);
+      
+      // Animate progress bar expansion after appending to DOM for gorgeous micro-interaction
+      setTimeout(() => {
+        const progressBar = row.querySelector('.profile-progress-bar');
+        if (progressBar) {
+          progressBar.style.width = `${ind.weight}%`;
+        }
+      }, 50);
+    });
+  }
 }

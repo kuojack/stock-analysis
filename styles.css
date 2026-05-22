@@ -589,14 +589,11 @@ input, textarea, select {
   padding: 16px;
   background-color: var(--bg-app);
   
-  /* 3-Column layout matching the requested layout:
-     - Left Column: K-Line, Multi-Timeframe, Patterns (Span 6)
-     - Center Column: Tech Overview, Key Prices, Suggestions (Span 3)
-     - Right Column: Institutions table, Major Players, Tech indicator (Span 3)
-  */
+  /* Modern 2-Column flexible desktop layout to prevent vertical overlaps & horizontal clipping */
   display: grid;
-  grid-template-columns: repeat(12, 1fr);
-  grid-auto-rows: minmax(auto, min-content);
+  grid-template-columns: repeat(2, 1fr);
+  grid-auto-rows: min-content;
+  align-content: start; /* Pack rows at top so they don't get compressed to fill viewport */
   gap: 16px;
 }
 
@@ -648,40 +645,44 @@ input, textarea, select {
 
 /* Grid Component Spanning Rules */
 .card-kline {
-  grid-column: span 6;
-  grid-row: span 2;
+  grid-column: span 2; /* Full width on desktop for long-term charts */
+  /* grid-row span is removed to prevent CSS grid overlapping conflicts */
 }
 
 .card-tech-overview {
-  grid-column: span 3;
+  grid-column: span 1; /* Spacious half width (400px+) */
 }
 
 .card-institutions {
-  grid-column: span 3;
+  grid-column: span 1; /* Spacious half width (400px+) for clean data tables */
 }
 
 .card-multi-timeframe {
-  grid-column: span 3;
+  grid-column: span 1; /* Spacious half width (400px+) */
 }
 
 .card-key-prices {
-  grid-column: span 3;
+  grid-column: span 1; /* Spacious half width (400px+) */
 }
 
 .card-major-players {
-  grid-column: span 3;
+  grid-column: span 1; /* Spacious half width (400px+) for clean data tables */
 }
 
 .card-patterns {
-  grid-column: span 3;
+  grid-column: span 1; /* Spacious half width (400px+) */
 }
 
 .card-tech-table {
-  grid-column: span 3;
+  grid-column: span 2; /* Full width to comfortably display kd/rsi detailed explanations */
 }
 
 .card-suggestions {
-  grid-column: span 6; /* Occupies the wide bottom slot for strategies */
+  grid-column: span 2; /* Full width for elegant dual column actions & signal bulb layout */
+}
+
+.card-profile-analysis {
+  grid-column: span 2; /* Full width for profile list and dynamic industry bars */
 }
 
 /* ==========================================================================
@@ -689,7 +690,8 @@ input, textarea, select {
    ========================================================================== */
 .chart-wrapper {
   position: relative;
-  height: 380px;
+  min-height: 380px;
+  flex-grow: 1;
   padding: 0;
   overflow: hidden;
 }
@@ -1917,21 +1919,7 @@ input, textarea, select {
   display: none;
 }
 
-/* Intermediate Tablet Scaling rules */
-@media (max-width: 1400px) {
-  .dashboard-grid {
-    grid-template-columns: repeat(6, 1fr);
-  }
-  .card-kline { grid-column: span 6; }
-  .card-tech-overview { grid-column: span 3; }
-  .card-institutions { grid-column: span 3; }
-  .card-multi-timeframe { grid-column: span 3; }
-  .card-key-prices { grid-column: span 3; }
-  .card-major-players { grid-column: span 3; }
-  .card-patterns { grid-column: span 3; }
-  .card-tech-table { grid-column: span 3; }
-  .card-suggestions { grid-column: span 3; }
-}
+/* Intermediate Tablet Scaling rules (redundant under the adaptive 2-column desktop framework) */
 
 @media (max-width: 1200px) {
   body { overflow-y: auto; height: auto; }
@@ -1940,7 +1928,7 @@ input, textarea, select {
   .sidebar { width: 100%; height: auto; overflow: visible; border-right: none; border-bottom: 1px solid var(--border-card); }
   .ai-sidebar { width: 100%; height: auto; overflow: visible; border-left: none; border-top: 1px solid var(--border-card); }
   .dashboard-grid { grid-template-columns: 1fr; }
-  .card-kline, .card-tech-overview, .card-institutions, .card-multi-timeframe, .card-key-prices, .card-major-players, .card-patterns, .card-tech-table, .card-suggestions {
+  .card-kline, .card-tech-overview, .card-institutions, .card-multi-timeframe, .card-key-prices, .card-major-players, .card-patterns, .card-tech-table, .card-suggestions, .card-profile-analysis, .card-etf-details {
     grid-column: span 1;
   }
   .chart-wrapper { height: 300px; }
@@ -2350,7 +2338,7 @@ input, textarea, select {
 
 /* Spanning rules */
 .card-etf-details {
-  grid-column: span 6;
+  grid-column: span 2; /* Full width on desktop for elegant layout */
   border-color: rgba(191, 90, 242, 0.45) !important; /* Subtle purple glow matching ETF indicators */
   box-shadow: 0 4px 24px rgba(191, 90, 242, 0.08) !important;
 }
@@ -2630,6 +2618,95 @@ input, textarea, select {
   display: flex;
   align-items: center;
   gap: 4px;
+}
+
+/* ==========================================================================
+   Profile and Industry Analysis Card Styles (.card-profile-analysis)
+   ========================================================================== */
+.profile-analysis-body {
+  display: flex;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.profile-details-column {
+  flex: 1;
+  border-right: 1px solid var(--border-card);
+  padding-right: 24px;
+  min-width: 240px;
+}
+
+.profile-industry-column {
+  flex: 1.2;
+  min-width: 260px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.industry-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+
+.industry-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.profile-progress-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 11px;
+}
+
+.profile-ind-name {
+  color: #fff;
+  width: 140px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.profile-progress-bar-container {
+  flex-grow: 1;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.03);
+  border-radius: 4px;
+  overflow: hidden;
+  position: relative;
+}
+
+.profile-progress-bar {
+  height: 100%;
+  border-radius: 4px;
+  width: 0%; /* Dynamic expansion */
+  background: linear-gradient(90deg, var(--color-highlight) 0%, var(--color-purple) 100%);
+  box-shadow: 0 0 8px rgba(10, 132, 255, 0.4);
+  transition: width 1.2s cubic-bezier(0.1, 0.8, 0.25, 1);
+}
+
+.profile-ind-weight {
+  font-family: var(--font-display);
+  font-weight: 600;
+  color: var(--text-muted);
+  width: 45px;
+  text-align: right;
+}
+
+@media (max-width: 768px) {
+  .profile-details-column {
+    border-right: none !important;
+    padding-right: 0 !important;
+    margin-bottom: 12px !important;
+  }
 }
 
 

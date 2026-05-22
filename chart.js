@@ -50,10 +50,17 @@ class StockChart {
       this.render();
     });
 
-    // Resize observer
-    window.addEventListener('resize', () => {
-      this.resize();
-    });
+    // Resize observer to handle dynamic grid layout/card size shifts
+    if (window.ResizeObserver) {
+      const resizeObserver = new ResizeObserver(() => {
+        this.resize();
+      });
+      resizeObserver.observe(this.canvas.parentElement);
+    } else {
+      window.addEventListener('resize', () => {
+        this.resize();
+      });
+    }
   }
 
   resize() {

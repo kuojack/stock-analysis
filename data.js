@@ -771,6 +771,267 @@ class DataEngine {
       holdings: etf.holdings
     };
   }
+
+  /**
+   * Get basic profile and industry allocation details for stocks and ETFs
+   * @param {string} stockId 
+   * @returns {object}
+   */
+  static getStockProfile(stockId) {
+    const cleanId = stockId.trim();
+    const isEtf = this.isETF(cleanId);
+    
+    // 1. Curated Stocks and ETFs Database Seeds
+    const stockSeeds = {
+      "2330": {
+        name: "台積電",
+        manager: "魏哲家 (董事長兼總裁)",
+        size: "2,593.0 億元 (實收資本額)",
+        listedDate: "1994-09-05",
+        payout: "季配息 (每年 3、6、9、12月分派)",
+        indexOrProducts: "專業積體電路製造、晶圓代工與先進封裝研發",
+        industries: [
+          { name: "高效能運算 (HPC)", weight: 46 },
+          { name: "智慧型手機 (Mobile)", weight: 38 },
+          { name: "物聯網 (IoT)", weight: 8 },
+          { name: "車用電子 (Automotive)", weight: 6 },
+          { name: "消費性電子與其他", weight: 2 }
+        ]
+      },
+      "2360": {
+        name: "致茂",
+        manager: "黃欽明 (董事長兼執行長)",
+        size: "42.5 億元 (實收資本額)",
+        listedDate: "1996-09-20",
+        payout: "每半年配息 (通常於 4、9月發放)",
+        indexOrProducts: "精密量測儀器、半導體與先進封裝測試設備、自動化檢測系統",
+        industries: [
+          { name: "半導體及封裝測試系統", weight: 45 },
+          { name: "電動車及綠能測試解決方案", weight: 30 },
+          { name: "智慧製造與自動化整合", weight: 15 },
+          { name: "光電與其他零部件", weight: 10 }
+        ]
+      },
+      "2317": {
+        name: "鴻海",
+        manager: "劉揚偉 (董事長暨總經理)",
+        size: "1,386.3 億元 (實收資本額)",
+        listedDate: "1991-06-18",
+        payout: "年配息 (通常於 7~8 月除息分派)",
+        indexOrProducts: "3C電子產品代工整合服務 (EMS)、AI伺服器、電動車系統研發",
+        industries: [
+          { name: "消費性電子產品", weight: 42 },
+          { name: "雲端網路伺服器及AI產品", weight: 32 },
+          { name: "電腦終端設備", weight: 18 },
+          { name: "電子精密元件與其他", weight: 8 }
+        ]
+      },
+      "2454": {
+        name: "聯發科",
+        manager: "蔡明介 (董事長)",
+        size: "160.0 億元 (實收資本額)",
+        listedDate: "2001-07-23",
+        payout: "每半年配息 (採半年派發＋特息機制)",
+        indexOrProducts: "無線通訊與手持裝置系統單晶片 (SoC)、智慧終端與物聯網晶片",
+        industries: [
+          { name: "行動運算晶片 (智慧手機)", weight: 55 },
+          { name: "智慧終端平台 (電視/物聯網)", weight: 33 },
+          { name: "電源管理晶片及特殊ASIC", weight: 12 }
+        ]
+      }
+    };
+
+    const etfSeeds = {
+      "0050": {
+        name: "元大台灣50",
+        manager: "林孟迪 (基金經理人)",
+        size: "3,120.5 億元",
+        listedDate: "2003-06-30",
+        payout: "半年配息 (每年 1月及 7月配發)",
+        indexOrProducts: "臺灣 50 指數 (Tracking Index)",
+        industries: [
+          { name: "半導體業", weight: 62.4 },
+          { name: "電子零組件與電腦週邊", weight: 12.1 },
+          { name: "金融保險業", weight: 10.5 },
+          { name: "航運與傳產板塊", weight: 5.0 },
+          { name: "其他上市優質企業", weight: 10.0 }
+        ]
+      },
+      "0056": {
+        name: "元大台灣高股息",
+        manager: "施雅菁 (基金經理人)",
+        size: "2,854.2 億元",
+        listedDate: "2007-12-26",
+        payout: "季配息 (每年 1、4、7、10月配發)",
+        indexOrProducts: "臺灣高股息指數 (Tracking Index)",
+        industries: [
+          { name: "電腦及週邊設備業", weight: 25.4 },
+          { name: "半導體及晶圓代工業", weight: 18.2 },
+          { name: "電子零組件與IC通路", weight: 15.1 },
+          { name: "航運及鋼鐵傳產", weight: 10.4 },
+          { name: "其他高收益成分股", weight: 30.9 }
+        ]
+      },
+      "00878": {
+        name: "國泰永續高股息",
+        manager: "游日傑 (基金經理人)",
+        size: "3,085.1 億元",
+        listedDate: "2020-07-20",
+        payout: "季配息 (每年 2、5、8、11月配發)",
+        indexOrProducts: "MSCI臺灣ESG永續高股息精選30指數",
+        industries: [
+          { name: "電腦及週邊設備業", weight: 28.2 },
+          { name: "金融保險板塊", weight: 22.5 },
+          { name: "半導體及電子零組件", weight: 15.4 },
+          { name: "通訊及光電板塊", weight: 12.1 },
+          { name: "其他ESG優選企業", weight: 21.8 }
+        ]
+      },
+      "00919": {
+        name: "群益台灣精選高息",
+        manager: "謝明志 (基金經理人)",
+        size: "2,050.4 億元",
+        listedDate: "2022-10-20",
+        payout: "季配息 (每年 3、6、9、12月配發)",
+        indexOrProducts: "臺灣精選高息指數 (Tracking Index)",
+        industries: [
+          { name: "半導體及封測業", weight: 42.5 },
+          { name: "航運與鋼鐵工業", weight: 18.8 },
+          { name: "電子零組件與通路", weight: 15.2 },
+          { name: "電腦週邊與系統代工", weight: 10.5 },
+          { name: "其他高息精選成分股", weight: 13.0 }
+        ]
+      },
+      "00929": {
+        name: "復華台灣科技優息",
+        manager: "許忠成 (基金經理人)",
+        size: "1,820.6 億元",
+        listedDate: "2023-06-09",
+        payout: "月配息 (每月中旬發放)",
+        indexOrProducts: "臺灣特選臺灣科技優息指數",
+        industries: [
+          { name: "半導體及封裝測試", weight: 58.2 },
+          { name: "電子零組件及通路", weight: 15.5 },
+          { name: "電腦週邊與通訊設備", weight: 12.1 },
+          { name: "光電板塊與關鍵組件", weight: 8.2 },
+          { name: "其他電子優選企業", weight: 6.0 }
+        ]
+      },
+      "00940": {
+        name: "元大台灣價值高息",
+        manager: "胡雅惠 (基金經理人)",
+        size: "1,752.3 億元",
+        listedDate: "2024-04-01",
+        payout: "月配息 (每月上旬發放)",
+        indexOrProducts: "臺灣價值高息指數 (Tracking Index)",
+        industries: [
+          { name: "半導體業", weight: 35.5 },
+          { name: "電腦週邊與精密零組件", weight: 20.2 },
+          { name: "航運及傳統工業", weight: 15.4 },
+          { name: "電子零組件業", weight: 12.1 },
+          { name: "其他低基期高息股", weight: 16.8 }
+        ]
+      }
+    };
+
+    // 2. Resolve Seeds
+    if (isEtf) {
+      if (etfSeeds[cleanId]) {
+        return { isEtf, ...etfSeeds[cleanId] };
+      }
+      
+      // Fallback ETF Profile Generator
+      let seedVal = 0;
+      for (let i = 0; i < cleanId.length; i++) {
+        seedVal += cleanId.charCodeAt(i);
+      }
+      
+      const managers = ["張振亞", "李志堅", "王健行", "陳永盛", "劉建國"];
+      const payouts = ["月配息 (每月發放)", "季配息 (1,4,7,10月)", "季配息 (2,5,8,11月)", "半年配息", "年配息"];
+      
+      const etfName = this.getETFDetails(cleanId, 100).name;
+      const sizeVal = ((seedVal % 1500) + 150).toFixed(1);
+      const year = 2012 + (seedVal % 12);
+      const month = String((seedVal % 12) + 1).padStart(2, '0');
+      const day = String((seedVal % 28) + 1).padStart(2, '0');
+      
+      // Weights must sum up to exactly 100%
+      const weights = [35.5, 22.8, 16.2, 14.5, 11.0];
+      const industryOptions = [
+        ["半導體業", "電子零組件", "電腦及週邊設備", "金融保險", "其他版塊"],
+        ["電子零組件", "光電板塊", "半導體業", "鋼鐵傳產", "其他高回報股"],
+        ["金融保險業", "電腦週邊", "航運板塊", "通信網路", "其他產業成分"],
+        ["電腦週邊", "半導體業", "電子零組件", "綠能測試", "其他低基期優股"]
+      ];
+      
+      const indNames = industryOptions[seedVal % industryOptions.length];
+      const industries = indNames.map((name, idx) => ({
+        name,
+        weight: weights[idx]
+      }));
+
+      return {
+        isEtf,
+        name: etfName,
+        manager: `${managers[seedVal % managers.length]} (基金經理人)`,
+        size: `${parseFloat(sizeVal).toLocaleString()} 億元`,
+        listedDate: `${year}-${month}-${day}`,
+        payout: payouts[seedVal % payouts.length],
+        indexOrProducts: "臺灣指數公司特定主題量化指數",
+        industries
+      };
+      
+    } else {
+      if (stockSeeds[cleanId]) {
+        return { isEtf, ...stockSeeds[cleanId] };
+      }
+      
+      // Fallback Stock Profile Generator
+      let seedVal = 0;
+      for (let i = 0; i < cleanId.length; i++) {
+        seedVal += cleanId.charCodeAt(i);
+      }
+      
+      const chairmen = ["郭台強", "童子賢", "張忠謀", "林百里", "施崇棠", "蔡宏圖"];
+      const payouts = ["年配息 (每年7~8月發放)", "半年配息", "季配息 (每季發放)", "不配息 / 保留盈餘"];
+      const products = [
+        "半導體精密封測服務與晶圓先進製程研發",
+        "通訊終端產品研發、電子精密板塊設計與代工",
+        "智慧車用與電動車綠能檢測、工業自動化控制系統",
+        "高精密光電元件、物聯網晶片設計與雲端技術整合"
+      ];
+      
+      const capital = ((seedVal % 800) + 15).toFixed(1);
+      const year = 1985 + (seedVal % 35);
+      const month = String((seedVal % 12) + 1).padStart(2, '0');
+      const day = String((seedVal % 28) + 1).padStart(2, '0');
+      
+      const weights = [45.0, 30.0, 15.0, 10.0];
+      const industryOptions = [
+        ["消費性電子與代工", "AI與雲端伺服器", "電腦周邊零部件", "其他衍生性業務"],
+        ["車用與電動車電子", "智慧型手機晶片", "物聯網與智慧終端", "其他特用晶片"],
+        ["半導體測試服務", "高精密檢測系統", "自動化與精密量測", "光電與周邊零組件"],
+        ["雲端伺服器與AI晶片", "網通設備與通信晶片", "個人電腦周邊", "其他智慧組件"]
+      ];
+      
+      const indNames = industryOptions[seedVal % industryOptions.length];
+      const industries = indNames.map((name, idx) => ({
+        name,
+        weight: weights[idx]
+      }));
+
+      return {
+        isEtf,
+        name: "台股 " + cleanId,
+        manager: `${chairmen[seedVal % chairmen.length]} (董事長)`,
+        size: `${parseFloat(capital).toLocaleString()} 億元 (實收資本額)`,
+        listedDate: `${year}-${month}-${day}`,
+        payout: payouts[seedVal % payouts.length],
+        indexOrProducts: products[seedVal % products.length],
+        industries
+      };
+    }
+  }
 }
 
 // Export module
