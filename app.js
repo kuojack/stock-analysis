@@ -127,7 +127,8 @@ function initAppEvents() {
   });
 
   // Security configuration modal controls
-  const btnConfig = document.getElementById('btnApiConfig');
+  const btnFinmind = document.getElementById('btnApiConfigFinmind');
+  const btnGemini = document.getElementById('btnApiConfigGemini');
   const modalConfig = document.getElementById('apiConfigModal');
   const btnHideConfig = document.getElementById('btnHideApiConfig');
   const btnCancelConfig = document.getElementById('btnCancelApiConfig');
@@ -139,7 +140,8 @@ function initAppEvents() {
   };
   const hideConfigModal = () => modalConfig.classList.remove('active');
 
-  btnConfig.addEventListener('click', showConfigModal);
+  if (btnFinmind) btnFinmind.addEventListener('click', showConfigModal);
+  if (btnGemini) btnGemini.addEventListener('click', showConfigModal);
   btnHideConfig.addEventListener('click', hideConfigModal);
   btnCancelConfig.addEventListener('click', hideConfigModal);
 
@@ -164,7 +166,11 @@ function initAppEvents() {
       activeFinmindKey = finmindKey;
       activeGeminiKey = geminiKey;
 
-      updateApiStatus(true);
+      // Reset dynamic status flags on new configuration
+      window.finmindStatus = '';
+      window.geminiStatus = '';
+
+      updateApiStatus();
       hideConfigModal();
       alert("金鑰加密儲存成功！已啟用看盤與 Gemini AI 助理。");
       loadStockData(activeStockCode);
@@ -189,7 +195,12 @@ function initAppEvents() {
 
       errorLbl.classList.remove('active');
       document.getElementById('pinVerifyModal').classList.remove('active');
-      updateApiStatus(true);
+      
+      // Reset dynamic status flags on successful unlock
+      window.finmindStatus = '';
+      window.geminiStatus = '';
+
+      updateApiStatus();
       
       // Load current stock
       loadStockData(activeStockCode);
@@ -260,34 +271,208 @@ function initAppEvents() {
       }
     });
   });
+
+  // Model Quota Dashboard Panel Toggle
+  const btnToggleQuota = document.getElementById('btnToggleQuotaDashboard');
+  const panelQuota = document.getElementById('quotaDashboardPanel');
+  if (btnToggleQuota && panelQuota) {
+    btnToggleQuota.addEventListener('click', () => {
+      const isHidden = panelQuota.style.display === 'none';
+      panelQuota.style.display = isHidden ? 'block' : 'none';
+      btnToggleQuota.classList.toggle('expanded', isHidden);
+    });
+  }
+
+  // Model Dropdown Change Listener
+  const selModel = document.getElementById('selGeminiModel');
+  if (selModel) {
+    selModel.addEventListener('change', () => {
+      updateSelectedModelUI();
+    });
+    // Initial call to sync UI
+    updateSelectedModelUI();
+  }
+
+  // Click on Quota Grid Card to switch model
+  const quotaGridItems = document.querySelectorAll('.quota-grid-item');
+  quotaGridItems.forEach(item => {
+    item.addEventListener('click', () => {
+      const modelVal = item.dataset.model;
+      if (selModel && modelVal) {
+        selModel.value = modelVal;
+        // Trigger select change logic
+        updateSelectedModelUI();
+      }
+    });
+  });
+}
+
+/**
+ * Update Selected Model Status Indicator and Dashboard highlight
+ */
+function updateSelectedModelUI() {
+  // Dynamically synchronize the dropdown and the dashboard statuses
+  syncModelStatusesUI();
+}
+
+/**
+ * Re-render dropdown options text and quota grid items to reflect real-time window.modelQuotaStatus state
+ */
+function syncModelStatusesUI() {
+  const selModel = document.getElementById('selGeminiModel');
+  if (!selModel) return;
+  const currentSelectedModelVal = selModel.value;
+
+  // 1. Update selector option texts to match status
+  Array.from(selModel.options).forEach(opt => {
+    const modelVal = opt.value;
+    const isOver = window.modelQuotaStatus[modelVal] === 'over';
+    const cleanName = getModelCleanName(modelVal);
+    opt.text = isOver ? `${cleanName} (❌ 額度超標/不可用)` : `${cleanName} (運作中)`;
+  });
+
+  // 2. Update status indicator bar above input
+  const statusBar = document.getElementById('activeModelStatusBar');
+  const statusText = document.getElementById('activeModelStatusText');
+  const currentIsOver = window.modelQuotaStatus[currentSelectedModelVal] === 'over';
+  const friendlyName = getFriendlyModelName(currentSelectedModelVal);
+
+  if (statusBar && statusText) {
+    if (currentIsOver) {
+      statusBar.className = 'active-model-status-bar status-active-over';
+      statusText.innerText = `⚠️ 目前選用：${friendlyName}，注意發問將會失敗！`;
+    } else {
+      statusBar.className = 'active-model-status-bar status-active-ok';
+      statusText.innerText = `🟢 目前選用：${friendlyName}，隨時可進行發問。`;
+    }
+  }
+
+  // 3. Update Quota Dashboard Grid item classes and texts
+  document.querySelectorAll('.quota-grid-item').forEach(item => {
+    const modelVal = item.dataset.model;
+    const isOver = window.modelQuotaStatus[modelVal] === 'over';
+    
+    // Select state highlight
+    if (modelVal === currentSelectedModelVal) {
+      item.classList.add('selected-model-card');
+      item.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    } else {
+      item.classList.remove('selected-model-card');
+    }
+
+    // Quota status state
+    const metaEl = item.querySelector('.model-meta');
+    const badgeEl = item.querySelector('.model-status-badge');
+
+    if (isOver) {
+      item.className = `quota-grid-item status-over ${modelVal === currentSelectedModelVal ? 'selected-model-card' : ''}`;
+      if (metaEl) metaEl.innerText = 'Limit: 0 / 0 (已超量)';
+      if (badgeEl) badgeEl.innerText = '❌ 額度超標';
+    } else {
+      item.className = `quota-grid-item status-ok ${modelVal === currentSelectedModelVal ? 'selected-model-card' : ''}`;
+      if (metaEl) metaEl.innerText = 'Limit: 500 (正常可用)';
+      if (badgeEl) badgeEl.innerText = '運作中';
+    }
+  });
+}
+
+function getModelCleanName(modelValue) {
+  switch(modelValue) {
+    case 'gemini-2.5-flash': return 'Gemini 2.5 Flash';
+    case 'gemini-2.5-pro': return 'Gemini 2.5 Pro';
+    case 'gemini-3.5-flash': return 'Gemini 3.5 Flash';
+    case 'gemini-3.1-flash-lite': return 'Gemini 3.1 Flash Lite';
+    case 'gemini-3.1-pro': return 'Gemini 3.1 Pro';
+    case 'gemini-2.5-flash-lite': return 'Gemini 2.5 Flash Lite';
+    case 'gemini-3-flash': return 'Gemini 3 Flash';
+    default: return modelValue;
+  }
+}
+
+function getFriendlyModelName(modelValue) {
+  const isOver = window.modelQuotaStatus[modelValue] === 'over';
+  const cleanName = getModelCleanName(modelValue);
+  return isOver ? `${cleanName} (❌ 額度超標/不可用)` : `${cleanName} (運作中)`;
 }
 
 /**
  * Setup default state or unlock keys
  */
+// Dynamic status variables to track runtime API validation errors
+window.finmindStatus = '';
+window.geminiStatus = '';
+window.modelQuotaStatus = {
+  'gemini-2.5-flash': 'ok',
+  'gemini-2.5-pro': 'ok',
+  'gemini-3.5-flash': 'ok',
+  'gemini-3.1-flash-lite': 'ok',
+  'gemini-3.1-pro': 'ok',
+  'gemini-2.5-flash-lite': 'ok',
+  'gemini-3-flash': 'ok'
+};
+
+window.updateFinmindStatus = function(status) {
+  if (window.finmindStatus !== status) {
+    window.finmindStatus = status;
+    updateApiStatus();
+  }
+};
+
+window.updateGeminiStatus = function(status) {
+  if (window.geminiStatus !== status) {
+    window.geminiStatus = status;
+    updateApiStatus();
+  }
+};
+
 function checkLocalKeysState() {
   const securePkg = localStorage.getItem('secure_api_keys');
   if (securePkg) {
     // Encrypted keys exist, show unlock prompt
     document.getElementById('pinVerifyModal').classList.add('active');
-    updateApiStatus(false);
+    updateApiStatus();
   } else {
     // No keys configured, show prompt & load mock data directly so UI is beautiful from start
-    updateApiStatus(false);
+    updateApiStatus();
     loadStockData(activeStockCode);
   }
 }
 
-function updateApiStatus(connected) {
-  const btn = document.getElementById('btnApiConfig');
-  const lbl = document.getElementById('lblApiStatus');
-  
-  if (connected) {
-    btn.className = "btn-api-status unlocked";
-    lbl.innerText = "已連線 (FinMind + Gemini)";
+function updateApiStatus() {
+  const btnFinmind = document.getElementById('btnApiConfigFinmind');
+  const lblFinmind = document.getElementById('lblFinmindStatus');
+  const btnGemini = document.getElementById('btnApiConfigGemini');
+  const lblGemini = document.getElementById('lblGeminiStatus');
+
+  // --- FinMind Status ---
+  if (!activeFinmindKey) {
+    // Unconfigured / Undecrypted: Amber Yellow status
+    if (btnFinmind) btnFinmind.className = "btn-api-status locked";
+    if (lblFinmind) lblFinmind.innerText = "FinMind: 未解密";
   } else {
-    btn.className = "btn-api-status locked";
-    lbl.innerText = "金鑰未解密";
+    if (window.finmindStatus === 'invalid') {
+      // Configuration was supplied but has failed in use: Neon Red status
+      if (btnFinmind) btnFinmind.className = "btn-api-status error";
+      if (lblFinmind) lblFinmind.innerText = "FinMind: 金鑰異常";
+    } else {
+      // Configuration successfully loaded/decrypted and working: Neon Green status
+      if (btnFinmind) btnFinmind.className = "btn-api-status unlocked";
+      if (lblFinmind) lblFinmind.innerText = "FinMind: 運作中";
+    }
+  }
+
+  // --- Gemini Status ---
+  if (!activeGeminiKey) {
+    if (btnGemini) btnGemini.className = "btn-api-status locked";
+    if (lblGemini) lblGemini.innerText = "Gemini: 未解密";
+  } else {
+    if (window.geminiStatus === 'invalid') {
+      if (btnGemini) btnGemini.className = "btn-api-status error";
+      if (lblGemini) lblGemini.innerText = "Gemini: 金鑰異常";
+    } else {
+      if (btnGemini) btnGemini.className = "btn-api-status unlocked";
+      if (lblGemini) lblGemini.innerText = "Gemini: 運作中";
+    }
   }
 }
 
@@ -958,9 +1143,34 @@ async function askCoPilot(question) {
     const reply = await window.DataEngine.askGemini(model, prompt, activeGeminiKey);
     removeThinkingIndicator(loaderId);
     appendChatMessage(reply, 'bot');
+    if (activeGeminiKey && typeof window.updateGeminiStatus === 'function') {
+      window.updateGeminiStatus('valid');
+    }
   } catch (err) {
     removeThinkingIndicator(loaderId);
     appendChatMessage(`🔴 諮詢失敗：${err.message || '連線超時，請檢查網絡與 API 金鑰設置。'}`, 'bot');
+    
+    const errMsg = err.message || '';
+    const isQuotaError = /quota|limit|exhausted|429|resource/i.test(errMsg);
+    
+    if (isQuotaError) {
+      // Flag specific model as over-quota dynamically
+      if (window.modelQuotaStatus) {
+        window.modelQuotaStatus[model] = 'over';
+        if (typeof syncModelStatusesUI === 'function') {
+          syncModelStatusesUI();
+        }
+      }
+      // The API key itself is authenticated and valid, keep key status indicator green
+      if (activeGeminiKey && typeof window.updateGeminiStatus === 'function') {
+        window.updateGeminiStatus('valid');
+      }
+    } else {
+      // General authorization or network failure: flag the global key lamp red
+      if (activeGeminiKey && typeof window.updateGeminiStatus === 'function') {
+        window.updateGeminiStatus('invalid');
+      }
+    }
   }
 }
 
@@ -1085,9 +1295,21 @@ function appendChatMessage(text, sender) {
   // Format reply (Support simple Markdown parser natively)
   const formattedText = formatMarkdown(text);
 
+  let footerHtml = '';
+  if (sender === 'bot') {
+    const selModel = document.getElementById('selGeminiModel');
+    if (selModel) {
+      const friendlyName = getFriendlyModelName(selModel.value);
+      footerHtml = `<div class="msg-model-footer">📡 回覆模型：${friendlyName}</div>`;
+    }
+  }
+
   msg.innerHTML = `
     <div class="msg-avatar">${avatar}</div>
-    <div class="msg-content">${formattedText}</div>
+    <div class="msg-content">
+      ${formattedText}
+      ${footerHtml}
+    </div>
   `;
 
   history.appendChild(msg);

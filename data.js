@@ -119,12 +119,19 @@ class DataEngine {
         }
       }
 
+      if (apiKey && typeof window.updateFinmindStatus === 'function') {
+        window.updateFinmindStatus('valid');
+      }
+
       return {
         metadata: { name, industry, code: stockId },
         history: history
       };
     } catch (e) {
       console.error("FinMind fetch error, falling back to mock:", e);
+      if (apiKey && typeof window.updateFinmindStatus === 'function') {
+        window.updateFinmindStatus('invalid');
+      }
       return this.getMockStockData(stockId);
     }
   }
@@ -174,9 +181,20 @@ class DataEngine {
           dealer: d.dealer,
           total: d.foreign + d.trust + d.dealer
         })).sort((a,b) => b.date.localeCompare(a.date)).slice(0, 20);
+
+        if (apiKey && typeof window.updateFinmindStatus === 'function') {
+          window.updateFinmindStatus('valid');
+        }
+      } else {
+        if (apiKey && typeof window.updateFinmindStatus === 'function') {
+          window.updateFinmindStatus('invalid');
+        }
       }
     } catch (e) {
       console.warn("三大法人 FinMind API 串接失敗，改用智能籌碼推算模組:", e);
+      if (apiKey && typeof window.updateFinmindStatus === 'function') {
+        window.updateFinmindStatus('invalid');
+      }
     }
 
     // Fallback: Smart Chip Flow Generator (determines chips based on price increase/decrease and volume)

@@ -65,10 +65,14 @@
       </div>
 
       <!-- Settings & API Status Indicators -->
-      <div class="header-actions">
-        <button class="btn-api-status locked" id="btnApiConfig">
-          <span class="api-status-dot"></span>
-          <span class="api-status-text" id="lblApiStatus">金鑰未解密</span>
+      <div class="header-actions" style="display: flex; gap: 10px;">
+        <button class="btn-api-status locked" id="btnApiConfigFinmind" title="配置 FinMind API 金鑰">
+          <span class="api-status-dot" id="dotFinmind"></span>
+          <span class="api-status-text" id="lblFinmindStatus">FinMind: 未解密</span>
+        </button>
+        <button class="btn-api-status locked" id="btnApiConfigGemini" title="配置 Gemini API 金鑰">
+          <span class="api-status-dot" id="dotGemini"></span>
+          <span class="api-status-text" id="lblGeminiStatus">Gemini: 未解密</span>
         </button>
       </div>
     </header>
@@ -462,14 +466,72 @@
             <!-- Model Dropdown -->
             <div class="model-select-wrapper">
               <select id="selGeminiModel">
-                <option value="gemini-2.5-flash" selected>Gemini 2.5 Flash (極速)</option>
-                <option value="gemini-2.5-pro">Gemini 2.5 Pro (深度分析)</option>
+                <option value="gemini-2.5-flash" selected>Gemini 2.5 Flash</option>
+                <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
                 <option value="gemini-3.5-flash">Gemini 3.5 Flash</option>
+                <option value="gemini-3.1-flash-lite">Gemini 3.1 Flash Lite</option>
                 <option value="gemini-3.1-pro">Gemini 3.1 Pro</option>
-                <option value="gemini-3.1-flash">Gemini 3.1 Flash</option>
-                <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
-                <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
+                <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash Lite</option>
+                <option value="gemini-3-flash">Gemini 3 Flash</option>
               </select>
+            </div>
+          </div>
+
+          <!-- Collapsible Model Quota Dashboard Panel -->
+          <div class="model-quota-status-banner" id="btnToggleQuotaDashboard">
+            <span>📊 點此展開/收合 Gemini 模型額度看板</span>
+            <span class="chevron-arrow">▼</span>
+          </div>
+          <div class="model-quota-dashboard-panel" id="quotaDashboardPanel" style="display: none;">
+            <div class="quota-dashboard-header">
+              <span>Gemini 顧問模型額度監控 (異常時自動轉為超標)</span>
+            </div>
+            <div class="quota-dashboard-grid">
+              <!-- Item 1 -->
+              <div class="quota-grid-item status-ok" data-model="gemini-2.5-flash">
+                <div class="model-name">Gemini 2.5 Flash</div>
+                <div class="model-meta">Limit: 500 (正常可用)</div>
+                <div class="model-status-badge">運作中</div>
+              </div>
+              <!-- Item 2 -->
+              <div class="quota-grid-item status-ok" data-model="gemini-2.5-pro">
+                <div class="model-name">Gemini 2.5 Pro</div>
+                <div class="model-meta">Limit: 500 (正常可用)</div>
+                <div class="model-status-badge">運作中</div>
+              </div>
+              <!-- Item 3 -->
+              <div class="quota-grid-item status-ok" data-model="gemini-3.5-flash">
+                <div class="model-name">Gemini 3.5 Flash</div>
+                <div class="model-meta">Limit: 500 (正常可用)</div>
+                <div class="model-status-badge">運作中</div>
+              </div>
+              <!-- Item 4 -->
+              <div class="quota-grid-item status-ok" data-model="gemini-3.1-flash-lite">
+                <div class="model-name">Gemini 3.1 Flash Lite</div>
+                <div class="model-meta">Limit: 500 (正常可用)</div>
+                <div class="model-status-badge">運作中</div>
+              </div>
+              <!-- Item 5 -->
+              <div class="quota-grid-item status-ok" data-model="gemini-3.1-pro">
+                <div class="model-name">Gemini 3.1 Pro</div>
+                <div class="model-meta">Limit: 500 (正常可用)</div>
+                <div class="model-status-badge">運作中</div>
+              </div>
+              <!-- Item 6 -->
+              <div class="quota-grid-item status-ok" data-model="gemini-2.5-flash-lite">
+                <div class="model-name">Gemini 2.5 Flash Lite</div>
+                <div class="model-meta">Limit: 500 (正常可用)</div>
+                <div class="model-status-badge">運作中</div>
+              </div>
+              <!-- Item 7 -->
+              <div class="quota-grid-item status-ok" data-model="gemini-3-flash">
+                <div class="model-name">Gemini 3 Flash</div>
+                <div class="model-meta">Limit: 500 (正常可用)</div>
+                <div class="model-status-badge">運作中</div>
+              </div>
+            </div>
+            <div class="quota-dashboard-footer">
+              💡 點選上方任一模型卡片，即可快速完成切換！
             </div>
           </div>
 
