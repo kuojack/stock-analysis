@@ -753,8 +753,6 @@ input, textarea, select {
    Component: Grid Tables
    ========================================================================== */
 .table-wrapper {
-  overflow-y: auto;
-  max-height: 250px;
   display: flex;
   flex-direction: column;
   gap: 10px;

@@ -491,9 +491,15 @@ function updateInstitutionalTable(chips) {
   const tbody = document.getElementById('tbodyInstitutions');
   tbody.innerHTML = '';
 
+  // Calculate buyDays on the recent 5 days for a consistent and correct trend signal
   let buyDays = 0;
-  // Slicing chips to 5 days specifically for the institutional table to maintain a compact UI
-  const displayChips = chips.slice(0, 5);
+  chips.slice(0, 5).forEach(day => {
+    if (day.total > 0) buyDays++;
+  });
+
+  // Display 10 rows on desktop, and 5 rows on mobile for a perfect adaptive layout
+  const isDesktop = window.innerWidth > 768;
+  const displayChips = chips.slice(0, isDesktop ? 10 : 5);
   displayChips.forEach(day => {
     const tr = document.createElement('tr');
     
@@ -502,8 +508,6 @@ function updateInstitutionalTable(chips) {
       const sign = val > 0 ? '+' : '';
       return `<td class="${cls}">${sign}${val.toLocaleString()}</td>`;
     };
-
-    if (day.total > 0) buyDays++;
 
     tr.innerHTML = `
       <td>${day.date.substring(5)}</td>
@@ -536,20 +540,24 @@ function updateMajorPlayersTable(history, chips) {
   const tbody = document.getElementById('tbodyMajorPlayers');
   tbody.innerHTML = '';
 
-  const recentHistory = history.slice(-5).reverse();
+  const isDesktop = window.innerWidth > 768;
+  const rowCount = isDesktop ? 10 : 5;
+  const recentHistory = history.slice(-rowCount).reverse();
   
   let accumulated = 0;
   const flows = recentHistory.map((day, index) => {
     // Generate simulated dynamic major players flow relative to the total volume and chip dynamics
     const chipDay = chips[index] || { total: 0 };
-    const multiplier = day.close >= day.open ? 1 : -1;
     const seed = Math.sin(day.close + index);
     
     // Major player net is typically correlated with foreign and volume
     const net = Math.floor(chipDay.foreign * 0.8 + (seed * day.volume * 0.05));
     accumulated += net;
 
-    const changePct = ((day.close - (history[history.length - 6 + (5 - index)] || day).close) / day.close) * 100;
+    // Use our highly robust dynamic price change calculation relative to the previous day
+    const dayInHistoryIndex = history.indexOf(day);
+    const prevDay = history[dayInHistoryIndex - 1] || day;
+    const changePct = prevDay.close !== 0 ? ((day.close - prevDay.close) / prevDay.close) * 100 : 0;
 
     return {
       date: day.date,
