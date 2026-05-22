@@ -1857,7 +1857,10 @@ input, textarea, select {
 
   .main-layout.show-tab-charts .dashboard-grid,
   .main-layout.show-tab-analysis .dashboard-grid {
-    display: grid !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 14px !important;
+    width: 100% !important;
   }
 
   /* Mobile Horizontal Watchlist Shortcut bar default hidden */
@@ -2314,6 +2317,66 @@ input, textarea, select {
     grid-template-columns: 1fr; /* Single column components on mobile */
     gap: 8px;
   }
+}
+
+/* ==========================================================================
+   Major Player Accumulation Badges (主力吃貨指標發光徽章)
+   ========================================================================== */
+.badge-accumulation-high {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 4px;
+  color: var(--color-purple);
+  background: var(--color-purple-bg);
+  border: 1px solid rgba(191, 90, 242, 0.4);
+  box-shadow: 0 0 10px rgba(191, 90, 242, 0.35);
+  text-shadow: 0 0 4px rgba(191, 90, 242, 0.5);
+  cursor: help;
+  transition: all var(--transition-speed);
+}
+
+.badge-accumulation-high:hover {
+  box-shadow: 0 0 14px rgba(191, 90, 242, 0.5);
+  transform: translateY(-1px);
+}
+
+.badge-accumulation-mid {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 4px;
+  color: var(--color-down); /* green */
+  background: var(--color-down-bg);
+  border: 1px solid rgba(48, 209, 88, 0.4);
+  box-shadow: 0 0 10px rgba(48, 209, 88, 0.35);
+  text-shadow: 0 0 4px rgba(48, 209, 88, 0.5);
+  cursor: help;
+  transition: all var(--transition-speed);
+}
+
+.badge-accumulation-mid:hover {
+  box-shadow: 0 0 14px rgba(48, 209, 88, 0.5);
+  transform: translateY(-1px);
+}
+
+.badge-accumulation-none {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 4px;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  cursor: help;
+  transition: all var(--transition-speed);
+}
+
+.badge-accumulation-none:hover {
+  background: rgba(255, 255, 255, 0.07);
 }
 
 

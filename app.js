@@ -399,7 +399,7 @@ async function loadStockData(stockId) {
     cardsPatterns.forEach(el => el.style.display = 'flex');
   }
 
-  updateTechnicalOverview(computedHistory);
+  updateTechnicalOverview(computedHistory, chips);
   updateInstitutionalTable(chips);
   updateMajorPlayersTable(computedHistory, chips);
   updatePatternsCard(computedHistory);
@@ -410,7 +410,7 @@ async function loadStockData(stockId) {
 /**
  * Formulate Technical Analysis metrics and render Overview
  */
-function updateTechnicalOverview(history) {
+function updateTechnicalOverview(history, chips) {
   const latest = history[history.length - 1];
   const isBullish = latest.sma5 > latest.sma20 && latest.sma20 > latest.sma60;
 
@@ -462,6 +462,22 @@ function updateTechnicalOverview(history) {
   document.getElementById('lblBbPos').innerText = latest.bbUpper && latest.close > latest.bbMiddle ? "站上中軌，向上靠近上軌" : "跌破中軌，下尋支撐";
   document.getElementById('lblBbChannel').innerText = latest.bbUpper && (latest.bbUpper - latest.bbLower) > (history[history.length - 10].bbUpper - history[history.length - 10].bbLower) ? "開口擴大" : "通道壓縮";
 
+  // Major player accumulation indicator
+  const accum = window.DataEngine.detectAccumulation(history, chips);
+  const accumEl = document.getElementById('lblAccumulationStatus');
+  if (accumEl) {
+    let badgeClass = 'badge-accumulation-none';
+    let badgeText = '[⚖️ 無明顯吸籌]';
+    if (accum.status === 'high') {
+      badgeClass = 'badge-accumulation-high';
+      badgeText = '[⚠️ 壓低吃貨中]';
+    } else if (accum.status === 'mid') {
+      badgeClass = 'badge-accumulation-mid';
+      badgeText = '[🟢 溫和吸籌中]';
+    }
+    accumEl.innerHTML = `<span class="${badgeClass}" title="${accum.detail}">${badgeText}</span>`;
+  }
+
   // Comprehensive evaluation
   const compEl = document.getElementById('lblComprehensiveEval');
   compEl.innerText = isBullish ? "多頭格局未變，短線高檔震盪" : "多空力道交界，防守關卡不破";
@@ -476,7 +492,9 @@ function updateInstitutionalTable(chips) {
   tbody.innerHTML = '';
 
   let buyDays = 0;
-  chips.forEach(day => {
+  // Slicing chips to 5 days specifically for the institutional table to maintain a compact UI
+  const displayChips = chips.slice(0, 5);
+  displayChips.forEach(day => {
     const tr = document.createElement('tr');
     
     const fmtCol = (val) => {
@@ -1000,6 +1018,9 @@ ${userQuestion}
 `;
   }
 
+  const accum = window.DataEngine.detectAccumulation(activeStockData, activeChipData);
+  const accumStatusText = accum.status === 'high' ? '壓低吃貨中 (評分 >= 70) ⚠️' : (accum.status === 'mid' ? '溫和吸籌中 (評分 50-69) 🟢' : '無明顯吸籌 (評分 < 45) ⚖️');
+
   return `
 你是一位頂級的證券分析顧問與量化操盤手。
 現在請根據我提供的個股真實即時行情、技術分析指標與主力籌碼數據，對用戶的問題進行深度、客觀且專業的推理解答。
@@ -1017,6 +1038,11 @@ ${userQuestion}
 - 布林通道: 上軌: ${latest.bbUpper ? latest.bbUpper.toFixed(1) : 'N/A'}, 中軌: ${latest.bbMiddle ? latest.bbMiddle.toFixed(1) : 'N/A'}, 下軌: ${latest.bbLower ? latest.bbLower.toFixed(1) : 'N/A'}
 - KD指標: K值: ${latest.K.toFixed(1)}, D值: ${latest.D.toFixed(1)} (${latest.K > latest.D ? 'K > D 黃金交叉' : 'K < D 死亡交叉'})
 - MACD指標: DIF: ${latest.dif.toFixed(2)}, DEA: ${latest.dea.toFixed(2)}, 柱狀體: ${latest.macdBar.toFixed(2)}
+
+---【主力壓低吃貨指標】---
+- 吃貨評分 (0-100): ${accum.score} 分
+- 狀態判定: ${accumStatusText}
+- 詳細判定依據: ${accum.detail}
 
 ---【法人近 5 日買賣超明細】---
 ${chipText}

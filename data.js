@@ -134,16 +134,16 @@ class DataEngine {
    * If FinMind fails or is absent, generate deterministic, highly realistic mock flows based on price action
    */
   static async fetchInstitutionalFlows(stockId, historyData, apiKey) {
-    const recentHistory = historyData.slice(-5).reverse(); // Last 5 days, newest first
+    const recentHistory = historyData.slice(-20).reverse(); // Last 20 days, newest first
     
     // We can query FinMind TaiwanStockInstitutionalInvestorsBuySell
     let result = [];
     let isMocked = true;
 
     try {
-      const last5Days = historyData.slice(-10);
-      const startDateStr = last5Days[0].date;
-      const endDateStr = last5Days[last5Days.length - 1].date;
+      const last30Days = historyData.slice(-30);
+      const startDateStr = last30Days[0].date;
+      const endDateStr = last30Days[last30Days.length - 1].date;
       const url = `https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockInstitutionalInvestorsBuySell&data_id=${stockId}&start_date=${startDateStr}&end_date=${endDateStr}${apiKey ? `&token=${apiKey}` : ''}`;
       
       const response = await fetch(url);
@@ -152,13 +152,12 @@ class DataEngine {
       if (resData.status === 200 && resData.data && resData.data.length > 0) {
         isMocked = false;
         // Process FinMind data
-        // FinMind gives separate rows for Foreign, InvestmentTrust, Dealer. We need to group them by date.
         const grouped = {};
         resData.data.forEach(item => {
           if (!grouped[item.date]) {
             grouped[item.date] = { date: item.date, foreign: 0, trust: 0, dealer: 0 };
           }
-          const netBuy = Math.floor((item.buy - item.sell) / 1000); // in '張' (thousands of shares)
+          const netBuy = Math.floor((item.buy - item.sell) / 1000); // in '張'
           if (item.name === 'Foreign_Investor' || item.name === '外陸資(不含外資自營商)') {
             grouped[item.date].foreign += netBuy;
           } else if (item.name === 'Investment_Trust' || item.name === '投信') {
@@ -174,7 +173,7 @@ class DataEngine {
           trust: d.trust,
           dealer: d.dealer,
           total: d.foreign + d.trust + d.dealer
-        })).sort((a,b) => b.date.localeCompare(a.date)).slice(0, 5);
+        })).sort((a,b) => b.date.localeCompare(a.date)).slice(0, 20);
       }
     } catch (e) {
       console.warn("三大法人 FinMind API 串接失敗，改用智能籌碼推算模組:", e);
@@ -407,6 +406,92 @@ class DataEngine {
       mHead: mStatus,
       mDetail: mDetail,
       mActive: mActive
+    };
+  }
+
+  /**
+   * 偵測主力/法人是否在低檔「壓低吃貨」 (Divergence accumulation)
+   * @param {Array} history 歷史K線數據 (至少20天)
+   * @param {Array} chips 法人籌碼數據 (至少20天)
+   * @returns {Object} 判定結果
+   */
+  static detectAccumulation(history, chips) {
+    if (!history || history.length < 20 || !chips || chips.length < 20) {
+      return { isAccumulating: false, score: 0, status: "none", detail: "數據收集不足" };
+    }
+
+    const recentK = history.slice(-20);
+    const recentChips = chips.slice(-20);
+
+    // 1. 計算近 20 天價格最大震幅 (Amplitude)
+    const closes = recentK.map(d => d.close);
+    const maxPrice = Math.max(...closes);
+    const minPrice = Math.min(...closes);
+    const priceAmplitude = ((maxPrice - minPrice) / minPrice) * 100;
+
+    // 2. 計算近 20 天價格淨漲跌幅 (Price Change %)
+    const priceChangePct = ((closes[closes.length - 1] - closes[0]) / closes[0]) * 100;
+
+    // 3. 計算近 20 天法人的買超天數與累計買超張數
+    let buyDays = 0;
+    let totalNetBuy = 0;
+    recentChips.forEach(c => {
+      if (c.total > 0) buyDays++;
+      totalNetBuy += c.total;
+    });
+    const buyDayRatio = buyDays / 20;
+
+    // 4. 吃貨綜合評分邏輯 (滿分 100)
+    let score = 0;
+    let reasons = [];
+
+    // 條件 A: 股價在橫盤壓縮 (震幅小於 10% 大幅加分)
+    if (priceAmplitude <= 8) {
+      score += 35;
+      reasons.push(`股價處於橫盤壓縮 (近月震幅僅 ${priceAmplitude.toFixed(1)}%)`);
+    } else if (priceAmplitude <= 12) {
+      score += 20;
+      reasons.push(`股價呈現區間整理 (近月震幅 ${priceAmplitude.toFixed(1)}%)`);
+    } else {
+      reasons.push(`股價波動較為劇烈 (近月震幅 ${priceAmplitude.toFixed(1)}%)`);
+    }
+
+    // 條件 B: 價格沒漲，但籌碼狂買 (多頭籌碼背離)
+    if (priceChangePct >= -6 && priceChangePct <= 3 && buyDayRatio >= 0.55) {
+      score += 45;
+      reasons.push(`價格與籌碼呈多頭背離 (股價近月微跌或持平 ${priceChangePct.toFixed(1)}%，但法人近20天買超天數高達 ${buyDays} 天)`);
+    } else if (priceChangePct <= 6 && buyDayRatio >= 0.5) {
+      score += 25;
+      reasons.push(`籌碼偏向多方緩步吸納 (股價小幅拉抬 ${priceChangePct.toFixed(1)}%，買超天數 ${buyDays} 天)`);
+    } else {
+      reasons.push(`價格與買賣超天數步調一致 (買超天數 ${buyDays} 天)`);
+    }
+
+    // 條件 C: 法人累計淨買超張數為正值
+    if (totalNetBuy > 0) {
+      score += 20;
+      reasons.push(`法人近20天累計淨吸籌 ${totalNetBuy.toLocaleString()} 張`);
+    } else {
+      reasons.push(`法人近20天呈現累計調節狀態`);
+    }
+
+    // 5. 狀態分類
+    let status = "none";
+    if (score >= 70) {
+      status = "high"; // 壓低吃貨
+    } else if (score >= 45) {
+      status = "mid";  // 溫和吃貨
+    }
+
+    return {
+      isAccumulating: score >= 70,
+      score,
+      status,
+      amplitude: priceAmplitude,
+      change: priceChangePct,
+      buyDays,
+      totalNetBuy,
+      detail: reasons.join("；")
     };
   }
 
