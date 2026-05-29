@@ -5,6 +5,36 @@
  */
 
 class DataEngine {
+  static formatDate(date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  static async fetchFinMindData(params, apiKey) {
+    const url = new URL("https://api.finmindtrade.com/api/v4/data");
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') {
+        url.searchParams.set(key, value);
+      }
+    });
+
+    const headers = {};
+    if (apiKey) {
+      headers.Authorization = `Bearer ${apiKey}`;
+    }
+
+    const response = await fetch(url.toString(), { headers });
+    const data = await response.json();
+
+    if (!response.ok || Number(data.status) !== 200) {
+      throw new Error(data.msg || data.message || `FinMind API 呼叫失敗，HTTP 狀態碼: ${response.status}`);
+    }
+
+    return Array.isArray(data.data) ? data.data : [];
+  }
+
   // Hardcoded highly realistic mock data fallback to ensure 100% out-of-the-box working dashboard
   static getMockStockData(stockId) {
     const stocks = {
@@ -36,7 +66,7 @@ class DataEngine {
       // Skip weekends
       if (date.getDay() === 0 || date.getDay() === 6) continue;
 
-      const dateStr = date.toISOString().split('T')[0];
+      const dateStr = this.formatDate(date);
       const change = (Math.random() - 0.47) * (currentPrice * 0.03); // Slight upward bias
       const open = currentPrice;
       const close = currentPrice + change;
@@ -69,29 +99,31 @@ class DataEngine {
    */
   static async fetchStockData(stockId, apiKey) {
     // Calculate dates: 1 year range
-    const endDateStr = new Date().toISOString().split('T')[0];
+    const endDateStr = this.formatDate(new Date());
     const startDate = new Date();
     startDate.setFullYear(startDate.getFullYear() - 1);
-    const startDateStr = startDate.toISOString().split('T')[0];
+    const startDateStr = this.formatDate(startDate);
 
     try {
-      const url = `https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&data_id=${stockId}&start_date=${startDateStr}&end_date=${endDateStr}${apiKey ? `&token=${apiKey}` : ''}`;
-      
-      const response = await fetch(url);
-      const resData = await response.json();
+      const priceData = await this.fetchFinMindData({
+        dataset: 'TaiwanStockPrice',
+        data_id: stockId,
+        start_date: startDateStr,
+        end_date: endDateStr
+      }, apiKey);
 
-      if (resData.status !== 200 || !resData.data || resData.data.length === 0) {
+      if (priceData.length === 0) {
         throw new Error("無法從 FinMind 取得該股價資料，改用內建模擬資料。");
       }
 
       // Map FinMind fields to our standard format
-      const history = resData.data.map(item => ({
+      const history = priceData.map(item => ({
         date: item.date,
-        open: item.open,
-        high: item.max,
-        low: item.min,
-        close: item.close,
-        volume: Math.floor(item.Trading_Volume / 1000) // Convert to '張' or thousands
+        open: Number(item.open),
+        high: Number(item.max),
+        low: Number(item.min),
+        close: Number(item.close),
+        volume: Math.floor(Number(item.Trading_Volume || 0) / 1000) // Convert shares to 張
       }));
 
       // Get Stock Name / Info from TaiwanStockInfo or mock it based on code
@@ -114,13 +146,8 @@ class DataEngine {
         try {
           let infoData = window.taiwanStockInfoCache;
           if (!infoData) {
-            const infoUrl = `https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockInfo${apiKey ? `&token=${apiKey}` : ''}`;
-            const infoRes = await fetch(infoUrl);
-            const res = await infoRes.json();
-            if (res.status === 200 && res.data) {
-              window.taiwanStockInfoCache = res.data;
-              infoData = res.data;
-            }
+            infoData = await this.fetchFinMindData({ dataset: 'TaiwanStockInfo' }, apiKey);
+            window.taiwanStockInfoCache = infoData;
           }
           if (infoData) {
             const match = infoData.find(s => s.stock_id === stockId);
@@ -166,25 +193,27 @@ class DataEngine {
       const last30Days = historyData.slice(-30);
       const startDateStr = last30Days[0].date;
       const endDateStr = last30Days[last30Days.length - 1].date;
-      const url = `https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockInstitutionalInvestorsBuySell&data_id=${stockId}&start_date=${startDateStr}&end_date=${endDateStr}${apiKey ? `&token=${apiKey}` : ''}`;
-      
-      const response = await fetch(url);
-      const resData = await response.json();
+      const flowData = await this.fetchFinMindData({
+        dataset: 'TaiwanStockInstitutionalInvestorsBuySell',
+        data_id: stockId,
+        start_date: startDateStr,
+        end_date: endDateStr
+      }, apiKey);
 
-      if (resData.status === 200 && resData.data && resData.data.length > 0) {
+      if (flowData.length > 0) {
         isMocked = false;
         // Process FinMind data
         const grouped = {};
-        resData.data.forEach(item => {
+        flowData.forEach(item => {
           if (!grouped[item.date]) {
             grouped[item.date] = { date: item.date, foreign: 0, trust: 0, dealer: 0 };
           }
-          const netBuy = Math.floor((item.buy - item.sell) / 1000); // in '張'
-          if (item.name === 'Foreign_Investor' || item.name === '外陸資(不含外資自營商)') {
+          const netBuy = Math.floor((Number(item.buy || 0) - Number(item.sell || 0)) / 1000); // shares to 張
+          if (item.name === 'Foreign_Investor' || item.name === 'Foreign_Dealer_Self' || item.name === '外陸資(不含外資自營商)') {
             grouped[item.date].foreign += netBuy;
           } else if (item.name === 'Investment_Trust' || item.name === '投信') {
             grouped[item.date].trust += netBuy;
-          } else if (item.name === 'Dealer' || item.name === '自營商(自行買賣)' || item.name === '自營商(避險)') {
+          } else if (item.name === 'Dealer' || item.name === 'Dealer_self' || item.name === 'Dealer_Hedging' || item.name === '自營商(自行買賣)' || item.name === '自營商(避險)') {
             grouped[item.date].dealer += netBuy;
           }
         });
@@ -566,7 +595,7 @@ class DataEngine {
         }
       ],
       generationConfig: {
-        temperature: 0.7,
+        temperature: 0.2,
         maxOutputTokens: 2048
       }
     };

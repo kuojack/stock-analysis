@@ -490,6 +490,7 @@ function updateApiStatus() {
 async function loadStockData(stockId) {
   const requestId = ++currentLoadRequestId;
   activeStockCode = stockId;
+  activeChipData = null;
   const klineLoader = document.getElementById('chartLoader');
   if (klineLoader) {
     klineLoader.style.display = 'flex';
@@ -509,6 +510,9 @@ async function loadStockData(stockId) {
   // 2. Compute indicators
   const computedHistory = window.DataEngine.computeIndicators(result.history);
   activeStockData = computedHistory;
+
+  // Keep the basic profile tied to the current stock immediately.
+  updateProfileAnalysisCard(stockId);
 
   // Render K-line chart
   if (chartInstance) {
@@ -602,7 +606,6 @@ async function loadStockData(stockId) {
   updateMultiTimeframeCard(computedHistory);
   updateIndicatorsTable(latestBar);
   updateSuggestionsCard(computedHistory, chips);
-  updateProfileAnalysisCard(stockId);
 }
 
 /**
@@ -1264,112 +1267,119 @@ async function askCoPilot(question) {
 /**
  * Dense prompt assembler
  */
-function compileStockPrompt(userQuestion) {
+function formatPrice(value, digits = 2) {
+  return Number.isFinite(value) ? value.toFixed(digits) : '資料不足';
+}
+
+function formatPercent(value, digits = 2) {
+  return Number.isFinite(value) ? `${value.toFixed(digits)}%` : '資料不足';
+}
+
+function buildActiveStockContext() {
   const latest = activeStockData[activeStockData.length - 1];
   const prev = activeStockData[activeStockData.length - 2] || latest;
   const isUp = latest.close >= prev.close;
-  const stockName = document.getElementById('hdrStockName').innerText;
-  
-  // Format chips context
-  let chipText = '';
-  if (activeChipData && activeChipData.length > 0) {
-    activeChipData.forEach(day => {
-      chipText += `- ${day.date}: 外資: ${day.foreign}張, 投信: ${day.trust}張, 自營商: ${day.dealer}張, 合計: ${day.total}張\n`;
-    });
-  }
-
-  // Detect ETF to inject specialized prompt
   const isEtf = window.DataEngine.isETF(activeStockCode);
+  const profile = window.DataEngine.getStockProfile(activeStockCode);
+  const stockName = document.getElementById('hdrStockName')?.innerText || profile.name || `台股 ${activeStockCode}`;
+  const priceDiff = latest.close - prev.close;
+  const priceDiffPct = prev.close ? (priceDiff / prev.close) * 100 : NaN;
+  const chips = Array.isArray(activeChipData) ? activeChipData.slice(0, 5) : [];
+  const chipsText = chips.length
+    ? chips.map(day => `- ${day.date}: 外資 ${day.foreign} 張、投信 ${day.trust} 張、自營商 ${day.dealer} 張、合計 ${day.total} 張`).join('\n')
+    : '目前籌碼資料尚未載入或資料不足，不能據此判斷法人動向。';
+  const profileText = [
+    `- 類型: ${isEtf ? 'ETF' : '個股'}`,
+    `- 基本資料名稱: ${profile.name || stockName}`,
+    `- ${isEtf ? '基金經理人' : '董事長 / 總裁'}: ${profile.manager || '資料不足'}`,
+    `- ${isEtf ? '基金規模' : '實收資本額'}: ${profile.size || '資料不足'}`,
+    `- ${isEtf ? '上市成立日期' : '上市日期'}: ${profile.listedDate || '資料不足'}`,
+    `- ${isEtf ? '配息頻率' : '股利配息頻率'}: ${profile.payout || '資料不足'}`,
+    `- ${isEtf ? '追蹤指數' : '主要經營業務'}: ${profile.indexOrProducts || '資料不足'}`
+  ].join('\n');
+  const industriesText = profile.industries?.length
+    ? profile.industries.map(ind => `- ${ind.name}: ${formatPercent(ind.weight, 1)}`).join('\n')
+    : '產業或配置資料不足。';
+  const accum = isEtf ? null : window.DataEngine.detectAccumulation(activeStockData, activeChipData);
+  const accumStatusText = !accum
+    ? ''
+    : (accum.status === 'high' ? '壓低吃貨中' : (accum.status === 'mid' ? '溫和吸籌中' : '無明顯吸籌'));
+
+  const baseContext = {
+    latest,
+    isEtf,
+    stockName,
+    profileText,
+    industriesText,
+    chipsText,
+    priceLine: `${formatPrice(latest.close)} (${isUp ? '▲' : '▼'} ${formatPrice(Math.abs(priceDiff))}, ${formatPercent(Math.abs(priceDiffPct))})`,
+    technicalText: [
+      `- 開盤/最高/最低/收盤: ${formatPrice(latest.open)} / ${formatPrice(latest.high)} / ${formatPrice(latest.low)} / ${formatPrice(latest.close)}`,
+      `- 成交量: ${latest.volume ?? '資料不足'} 張`,
+      `- SMA5 / SMA20 / SMA60: ${formatPrice(latest.sma5, 1)} / ${formatPrice(latest.sma20, 1)} / ${formatPrice(latest.sma60, 1)}`,
+      `- 布林通道上/中/下軌: ${formatPrice(latest.bbUpper, 1)} / ${formatPrice(latest.bbMiddle, 1)} / ${formatPrice(latest.bbLower, 1)}`,
+      `- KD: K=${formatPrice(latest.K, 1)}, D=${formatPrice(latest.D, 1)}`,
+      `- MACD: DIF=${formatPrice(latest.dif)}, DEA=${formatPrice(latest.dea)}, 柱狀體=${formatPrice(latest.macdBar)}`
+    ].join('\n'),
+    accumulationText: accum
+      ? [
+          `- 吃貨評分: ${accum.score} 分`,
+          `- 狀態判定: ${accumStatusText}`,
+          `- 判定依據: ${accum.detail}`
+        ].join('\n')
+      : 'ETF 不使用個股主力吃貨評分。'
+  };
+
   if (isEtf) {
     const etfDetails = window.DataEngine.getETFDetails(activeStockCode, latest.close);
-    let holdingsText = '';
-    etfDetails.holdings.forEach((h, idx) => {
-      holdingsText += `${idx + 1}. ${h.code} ${h.name} (${h.weight}%)\n`;
-    });
-
-    return `
-你是一位頂級的證券分析顧問與量化操盤手，同時也是指數股票型基金（ETF）研究專家。
-現在請根據我提供的 ETF 即時行情、估值折溢價、成分股組成結構與法人籌碼數據，對用戶的問題進行深度、客觀且專業的解答。
-
-==================【ETF 高密度數據面板】==================
-ETF 代號與名稱: ${activeStockCode} ${stockName}
-最新成交價 (市價): ${latest.close.toFixed(2)} (今日漲跌: ${isUp ? '▲' : '▼'} ${Math.abs(latest.close - prev.close).toFixed(2)})
-預估淨值 (NAV): ${etfDetails.nav.toFixed(2)}
-折溢價狀態: ${etfDetails.status === 'premium' ? '溢價 🔴' : (etfDetails.status === 'discount' ? '折價 🟢' : '折溢價合理 ⚖️')} ${etfDetails.premiumDiscountRate.toFixed(2)}% (差額: ${etfDetails.premiumDiscountValue.toFixed(2)} 元)
-今日成交量: ${latest.volume} 張
-
----【核心成分股與權重比】---
-${holdingsText}
-
----【法人近 5 日買賣超明細】---
-${chipText}
-
----【技術指標計算結果】---
-- 5日均線 (SMA5): ${latest.sma5 ? latest.sma5.toFixed(1) : '計算中'}
-- 20日均線 (SMA20): ${latest.sma20 ? latest.sma20.toFixed(1) : '計算中'}
-- 60日均線 (SMA60): ${latest.sma60 ? latest.sma60.toFixed(1) : '計算中'}
-- KD指標: K值: ${latest.K.toFixed(1)}, D值: ${latest.D.toFixed(1)} (${latest.K > latest.D ? 'K > D 黃金交叉' : 'K < D 死亡交叉'})
-- MACD指標: DIF: ${latest.dif.toFixed(2)}, DEA: ${latest.dea.toFixed(2)}, 柱狀體: ${latest.macdBar.toFixed(2)}
-
-==================【用戶當前詢問的問題】==================
-${userQuestion}
-
-==================【你需遵循的回覆規則】==================
-1. 請以「繁體中文（台灣習慣術語）」作答，使用專業、親切且客觀的投顧分析語氣，避免空泛套話或冷冰冰的官方發言。
-2. 回答時請區分以下情況：
-   - 【情況 A - 詢問此 ETF 行情/指標/籌碼或操作建議】：請緊密結合上方「數據面板」中的折溢價率、核心成分股比重與法人動向，進行邏輯嚴密的推演分析。並在結尾提供具體的 ETF 佈局與操作點位建議（包含定期定額或分批買點）。
-   - 【情況 B - 詢問概念性問題、一般問候、或無關的閒聊】：請直接以專業顧問身份「自然流暢地回答」即可。切勿強行套用上方個股數據，也無須每次都硬塞免責聲明或買賣區間點位，避免顯得突兀或答非所問。
-3. 採用 Markdown 格式輸出，支持標題、加粗、列表與 Markdown 表格（若能將分析結果整理成表格會顯得極其專業）。
-4. 請勿在每次回覆的開頭或結尾重複使用生硬的公式化免責聲明，應讓專業性極其自然地融入您的回答中。
-5. 視是用戶的問題，自然提及您是根據此時此刻的真實折溢價與持股權重進行即時分析。
-`;
+    baseContext.etfText = [
+      `- 預估淨值 (NAV): ${formatPrice(etfDetails.nav)}`,
+      `- 折溢價狀態: ${etfDetails.status === 'premium' ? '溢價' : (etfDetails.status === 'discount' ? '折價' : '折溢價合理')} ${formatPercent(etfDetails.premiumDiscountRate)}，差額 ${formatPrice(etfDetails.premiumDiscountValue)} 元`,
+      `- 核心成分股: ${etfDetails.holdings.map((h, idx) => `${idx + 1}. ${h.code} ${h.name} ${formatPercent(h.weight, 1)}`).join('；')}`
+    ].join('\n');
   }
 
-  const accum = window.DataEngine.detectAccumulation(activeStockData, activeChipData);
-  const accumStatusText = accum.status === 'high' ? '壓低吃貨中 (評分 >= 70) ⚠️' : (accum.status === 'mid' ? '溫和吸籌中 (評分 50-69) 🟢' : '無明顯吸籌 (評分 < 45) ⚖️');
+  return baseContext;
+}
 
+function compileStockPrompt(userQuestion) {
+  const ctx = buildActiveStockContext();
   return `
-你是一位頂級的證券分析顧問與量化操盤手。
-現在請根據我提供的個股真實即時行情、技術分析指標與主力籌碼數據，對用戶的問題進行深度、客觀且專業的推理解答。
+你是台股資料分析助理。你只能根據下方「目前畫面已提供的資料」回答，不得編造新聞、法說會內容、財報數字、目標價、券商報告、即時消息或任何未提供的外部資訊。
 
-==================【個股高密度數據面板】==================
-個股代號與名稱: ${activeStockCode} ${stockName}
-最新成交價: ${latest.close.toFixed(2)} (今日漲跌: ${isUp ? '▲' : '▼'} ${Math.abs(latest.close - prev.close).toFixed(2)})
-開盤價: ${latest.open.toFixed(2)} | 最高: ${latest.high.toFixed(2)} | 最低: ${latest.low.toFixed(2)}
-今日成交量: ${latest.volume} 張
+如果用戶詢問的內容需要未提供的資料，請明確回答「目前資料不足以判斷」，並列出還需要哪些資料。若用戶問概念題，請只做概念教學，不要硬套目前股票或給進出場點。
 
----【技術指標計算結果】---
-- 5日均線 (SMA5): ${latest.sma5 ? latest.sma5.toFixed(1) : '計算中'}
-- 20日均線 (SMA20): ${latest.sma20 ? latest.sma20.toFixed(1) : '計算中'}
-- 60日均線 (SMA60): ${latest.sma60 ? latest.sma60.toFixed(1) : '計算中'}
-- 布林通道: 上軌: ${latest.bbUpper ? latest.bbUpper.toFixed(1) : 'N/A'}, 中軌: ${latest.bbMiddle ? latest.bbMiddle.toFixed(1) : 'N/A'}, 下軌: ${latest.bbLower ? latest.bbLower.toFixed(1) : 'N/A'}
-- KD指標: K值: ${latest.K.toFixed(1)}, D值: ${latest.D.toFixed(1)} (${latest.K > latest.D ? 'K > D 黃金交叉' : 'K < D 死亡交叉'})
-- MACD指標: DIF: ${latest.dif.toFixed(2)}, DEA: ${latest.dea.toFixed(2)}, 柱狀體: ${latest.macdBar.toFixed(2)}
+==================【目前選取標的】==================
+代號與名稱: ${activeStockCode} ${ctx.stockName}
+類型: ${ctx.isEtf ? 'ETF' : '個股'}
+最新價格與漲跌: ${ctx.priceLine}
 
----【主力壓低吃貨指標】---
-- 吃貨評分 (0-100): ${accum.score} 分
-- 狀態判定: ${accumStatusText}
-- 詳細判定依據: ${accum.detail}
+==================【基本資料】==================
+${ctx.profileText}
 
----【法人近 5 日買賣超明細】---
-${chipText}
+==================【產業 / 配置資料】==================
+${ctx.industriesText}
 
----【操作策略與點位】---
-- 建議進場區間: ${latest.close * 0.96} ~ ${latest.close * 0.98}
-- 建議停損區間: ${latest.close * 0.91} (跌破中軌)
-- 防守關卡: ${latest.close * 0.88}
+${ctx.isEtf ? `==================【ETF 折溢價與成分股】==================\n${ctx.etfText}\n` : ''}
+==================【技術指標】==================
+${ctx.technicalText}
+
+==================【籌碼資料】==================
+${ctx.chipsText}
+
+==================【主力吃貨評分】==================
+${ctx.accumulationText}
 
 ==================【用戶當前詢問的問題】==================
 ${userQuestion}
 
 ==================【你需遵循的回覆規則】==================
-1. 請以「繁體中文（台灣習慣術語）」作答，使用專業、親切且客觀的投顧分析語氣，避免空泛套話或冷冰冰的官方發言。
-2. 回答時請區分以下情況：
-   - 【情況 A - 詢問此個股行情/技術指標/籌碼或操作建議】：請緊密結合上方「數據面板」中的技術指標（如均線、KD、MACD、布林通道）和籌碼面（外資投信動向）進行邏輯推演，不要給予模糊答案。並在結尾提供具體的操盤策略建議（包含合理的進場、加碼、停損/防守價位）。
-   - 【情況 B - 詢問概念性問題（如：什麼是布林通道？）、一般問候、或無關的閒聊】：請直接以專業顧問身份「自然流暢地回答」即可。切勿強行套用上方個股數據，也無須每次都硬塞免責聲明或買賣區間點位，避免顯得突兀或答非所問。
-3. 採用 Markdown 格式輸出，支持標題、加粗、列表與 Markdown 表格（若能將分析結果整理成表格會顯得極其專業）。
-4. 請勿在每次回覆的開頭或結尾重複使用生硬的公式化免責聲明，應讓專業性極其自然地融入您的回答中。
-5. 視是用戶的問題，自然提及您是根據此時此刻的真實數據為用戶提供專屬諮詢。
+1. 使用繁體中文與台灣投資術語，語氣客觀、保守、清楚。
+2. 每個結論都要對應到上方某一項資料；沒有資料就說資料不足。
+3. 不要宣稱已查到最新新聞、最新財報、法說會或市場傳聞。
+4. 不要保證漲跌、勝率或報酬；可用「偏多、偏空、觀察、資料不足」這類條件式判斷。
+5. 若需要操作區間，只能用已提供價格與技術指標推導，並標明這是條件式風險控管，不是確定建議。
+6. 優先用 Markdown 表格或短條列；避免長篇空泛文字。
 `;
 }
 
@@ -1626,12 +1636,14 @@ function updateProfileAnalysisCard(stockId) {
     };
 
     if (isEtf) {
+      addDetailRow('ETF 名稱', profile.name || `ETF ${stockId}`);
       addDetailRow('基金經理人', profile.manager);
       addDetailRow('基金規模', profile.size);
       addDetailRow('上市成立日期', profile.listedDate);
       addDetailRow('配息頻率', profile.payout);
       addDetailRow('追蹤指數', `<span class="text-highlight" title="${profile.indexOrProducts}">${profile.indexOrProducts}</span>`);
     } else {
+      addDetailRow('股票名稱', profile.name || `台股 ${stockId}`);
       addDetailRow('董事長 / 總裁', profile.manager);
       addDetailRow('實收資本額', profile.size);
       addDetailRow('上市日期', profile.listedDate);
