@@ -608,6 +608,7 @@ input, textarea, select {
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
   backdrop-filter: blur(10px);
   transition: background-color var(--transition-speed), border-color var(--transition-speed);
+  position: relative; /* Allows absolute loader overlays to cover the card body perfectly */
 }
 
 .card:hover {
@@ -2735,6 +2736,40 @@ input, textarea, select {
     padding-right: 0 !important;
     margin-bottom: 12px !important;
   }
+}
+
+/* Card-level Loading Spinner Overlay for synchronous data loading UX */
+.card-loading-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(10, 15, 27, 0.85); /* Premium dark background */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  z-index: 100;
+  backdrop-filter: blur(4px); /* Modern frosted glass effect */
+  transition: opacity 0.3s ease;
+}
+
+.card-loading-overlay .spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid rgba(10, 132, 255, 0.15);
+  border-top-color: var(--color-highlight);
+  border-radius: 50%;
+  animation: spin 1s infinite linear;
+}
+
+.card-loading-overlay span {
+  font-family: var(--font-display);
+  font-size: 11px;
+  color: var(--text-muted);
+  letter-spacing: 0.5px;
 }
 
 

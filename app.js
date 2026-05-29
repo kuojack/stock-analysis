@@ -491,122 +491,159 @@ async function loadStockData(stockId) {
   const requestId = ++currentLoadRequestId;
   activeStockCode = stockId;
   activeChipData = null;
+
+  // Show premium loading overlays on all panels to represent synchronous data retrieval
+  showCardLoader('cardProfileAnalysis', '正在獲取基本資料與產業配置...');
+  showCardLoader('cardTechOverview', '計算技術指標中...');
+  showCardLoader('cardMultiTimeframe', '計算多週期趨勢...');
+  showCardLoader('cardKeyPrices', '計算關鍵支撐壓力...');
+  showCardLoader('cardPatterns', '分析 K 線型態...');
+  showCardLoader('cardTechTable', '更新技術指標資料...');
+  showCardLoader('cardInstitutions', '正在獲取三大法人買賣超...');
+  showCardLoader('cardMajorPlayers', '正在分析主力資金流向...');
+  showCardLoader('cardSuggestions', '正在生成操作建議與燈號...');
+
   const klineLoader = document.getElementById('chartLoader');
   if (klineLoader) {
     klineLoader.style.display = 'flex';
     klineLoader.querySelector('span').innerText = "正在從網絡獲取最新資料...";
   }
 
-  // 1. Fetch Price Bars
-  const result = await window.DataEngine.fetchStockData(stockId, activeFinmindKey);
-  if (requestId !== currentLoadRequestId) return;
-  
-  // Update Header Stock Metadata
-  document.getElementById('hdrStockName').innerText = result.metadata.name;
-  document.getElementById('hdrStockCode').innerText = stockId;
-  document.getElementById('hdrStockIndustry').innerText = `[${result.metadata.industry}]`;
-  document.getElementById('lblChatActiveStock').innerText = `${result.metadata.name} (${stockId})`;
-
-  // 2. Compute indicators
-  const computedHistory = window.DataEngine.computeIndicators(result.history);
-  activeStockData = computedHistory;
-
-  // Keep the basic profile tied to the current stock immediately.
-  updateProfileAnalysisCard(stockId);
-
-  // Render K-line chart
-  if (chartInstance) {
-    chartInstance.setData(computedHistory);
-  }
-
-  // Update Header Ticker Bar numbers based on latest bar
-  const latestBar = computedHistory[computedHistory.length - 1];
-  const prevBar = computedHistory[computedHistory.length - 2] || latestBar;
-  
-  const priceDiff = latestBar.close - prevBar.close;
-  const priceDiffPct = (priceDiff / prevBar.close) * 100;
-  const isUp = priceDiff >= 0;
-
-  // Store active stock metadata
-  const changeText = (priceDiffPct >= 0 ? '+' : '') + priceDiffPct.toFixed(2) + '%';
-  activeStockName = result.metadata.name;
-  activeStockChange = changeText;
-
-  // Dynamically update the header favorite star highlight based on current watchlist status
-  updateFavStarState(stockId);
-
-  const hdrPrice = document.getElementById('hdrCurrentPrice');
-  hdrPrice.innerText = latestBar.close.toFixed(2);
-  hdrPrice.className = `current-price ${isUp ? 'text-up' : 'text-down'}`;
-
-  const hdrArrow = document.getElementById('hdrChangeArrow');
-  hdrArrow.innerText = isUp ? '▲' : '▼';
-  hdrArrow.className = isUp ? 'text-up' : 'text-down';
-
-  const hdrDiff = document.getElementById('hdrPriceChange');
-  hdrDiff.innerText = Math.abs(priceDiff).toFixed(2);
-  hdrDiff.className = isUp ? 'text-up' : 'text-down';
-
-  const hdrPct = document.getElementById('hdrPriceChangePercent');
-  hdrPct.innerText = `(${priceDiffPct.toFixed(2)}%)`;
-  hdrPct.className = isUp ? 'text-up' : 'text-down';
-
-  // FinMind daily price data provides total volume and OHLC, but not order-book or intraday split fields.
-  document.getElementById('hdrSingleVol').innerText = '--';
-  document.getElementById('hdrTotalVol').innerText = latestBar.volume;
-  document.getElementById('hdrBidPrice').innerText = '--';
-  document.getElementById('hdrAskPrice').innerText = '--';
-  document.getElementById('hdrAvgPrice').innerText = ((latestBar.open + latestBar.close + latestBar.high + latestBar.low) / 4).toFixed(2);
-  document.getElementById('hdrInnerVol').innerText = '--';
-  document.getElementById('hdrOuterVol').innerText = '--';
-
-  document.getElementById('hdrOpenPrice').innerText = latestBar.open.toFixed(2);
-  document.getElementById('hdrHighPrice').innerText = latestBar.high.toFixed(2);
-  document.getElementById('hdrLowPrice').innerText = latestBar.low.toFixed(2);
-
-  // Time details
-  const timeStr = latestBar.date.replace(/-/g, '/') + ' 13:30:00';
-  document.getElementById('hdrTime').innerText = timeStr;
-
-  // 4. Update Tables & Overview Cards
-  const isEtfAsset = window.DataEngine.isETF(stockId);
-  const cardEtf = document.getElementById('cardEtfDetails');
-  const cardsMajor = document.querySelectorAll('.card-major-players');
-  const cardsPatterns = document.querySelectorAll('.card-patterns');
-  
-  if (isEtfAsset) {
-    if (cardEtf) cardEtf.style.display = 'flex';
-    cardsMajor.forEach(el => el.style.display = 'none');
-    cardsPatterns.forEach(el => el.style.display = 'none');
+  try {
+    // 1. Fetch Price Bars
+    const result = await window.DataEngine.fetchStockData(stockId, activeFinmindKey);
+    if (requestId !== currentLoadRequestId) return;
     
-    // Fetch and override ETF metadata to ensure 100% accurate display names
-    const etfDetails = window.DataEngine.getETFDetails(stockId, latestBar.close);
-    document.getElementById('hdrStockName').innerText = etfDetails.name;
-    document.getElementById('lblChatActiveStock').innerText = `${etfDetails.name} (${stockId})`;
-    document.getElementById('hdrStockIndustry').innerText = `[ETF基金]`;
-    activeStockName = etfDetails.name;
+    // Update Header Stock Metadata
+    document.getElementById('hdrStockName').innerText = result.metadata.name;
+    document.getElementById('hdrStockCode').innerText = stockId;
+    document.getElementById('hdrStockIndustry').innerText = `[${result.metadata.industry}]`;
+    document.getElementById('lblChatActiveStock').innerText = `${result.metadata.name} (${stockId})`;
+
+    // 2. Compute indicators
+    const computedHistory = window.DataEngine.computeIndicators(result.history);
+    activeStockData = computedHistory;
+
+    // Hide loaders on technical/profile cards immediately after first fetch resolves
+    hideCardLoader('cardProfileAnalysis');
+    hideCardLoader('cardTechOverview');
+    hideCardLoader('cardMultiTimeframe');
+    hideCardLoader('cardKeyPrices');
+    hideCardLoader('cardPatterns');
+    hideCardLoader('cardTechTable');
+
+    // Keep the basic profile tied to the current stock immediately, passing resolved metadata
+    updateProfileAnalysisCard(stockId, result.metadata.name, result.metadata.industry);
+
+    // Render K-line chart
+    if (chartInstance) {
+      chartInstance.setData(computedHistory);
+    }
+
+    // Update Header Ticker Bar numbers based on latest bar
+    const latestBar = computedHistory[computedHistory.length - 1];
+    const prevBar = computedHistory[computedHistory.length - 2] || latestBar;
     
-    // Populate ETF specific card
-    updateEtfDetailsCard(stockId, latestBar.close);
-  } else {
-    if (cardEtf) cardEtf.style.display = 'none';
-    cardsMajor.forEach(el => el.style.display = 'flex');
-    cardsPatterns.forEach(el => el.style.display = 'flex');
+    const priceDiff = latestBar.close - prevBar.close;
+    const priceDiffPct = (priceDiff / prevBar.close) * 100;
+    const isUp = priceDiff >= 0;
+
+    // Store active stock metadata
+    const changeText = (priceDiffPct >= 0 ? '+' : '') + priceDiffPct.toFixed(2) + '%';
+    activeStockName = result.metadata.name;
+    activeStockChange = changeText;
+
+    // Dynamically update the header favorite star highlight based on current watchlist status
+    updateFavStarState(stockId);
+
+    const hdrPrice = document.getElementById('hdrCurrentPrice');
+    hdrPrice.innerText = latestBar.close.toFixed(2);
+    hdrPrice.className = `current-price ${isUp ? 'text-up' : 'text-down'}`;
+
+    const hdrArrow = document.getElementById('hdrChangeArrow');
+    hdrArrow.innerText = isUp ? '▲' : '▼';
+    hdrArrow.className = isUp ? 'text-up' : 'text-down';
+
+    const hdrDiff = document.getElementById('hdrPriceChange');
+    hdrDiff.innerText = Math.abs(priceDiff).toFixed(2);
+    hdrDiff.className = isUp ? 'text-up' : 'text-down';
+
+    const hdrPct = document.getElementById('hdrPriceChangePercent');
+    hdrPct.innerText = `(${priceDiffPct.toFixed(2)}%)`;
+    hdrPct.className = isUp ? 'text-up' : 'text-down';
+
+    // FinMind daily price data provides total volume and OHLC, but not order-book or intraday split fields.
+    document.getElementById('hdrSingleVol').innerText = '--';
+    document.getElementById('hdrTotalVol').innerText = latestBar.volume;
+    document.getElementById('hdrBidPrice').innerText = '--';
+    document.getElementById('hdrAskPrice').innerText = '--';
+    document.getElementById('hdrAvgPrice').innerText = ((latestBar.open + latestBar.close + latestBar.high + latestBar.low) / 4).toFixed(2);
+    document.getElementById('hdrInnerVol').innerText = '--';
+    document.getElementById('hdrOuterVol').innerText = '--';
+
+    document.getElementById('hdrOpenPrice').innerText = latestBar.open.toFixed(2);
+    document.getElementById('hdrHighPrice').innerText = latestBar.high.toFixed(2);
+    document.getElementById('hdrLowPrice').innerText = latestBar.low.toFixed(2);
+
+    // Time details
+    const timeStr = latestBar.date.replace(/-/g, '/') + ' 13:30:00';
+    document.getElementById('hdrTime').innerText = timeStr;
+
+    // 4. Update Tables & Overview Cards
+    const isEtfAsset = window.DataEngine.isETF(stockId);
+    const cardEtf = document.getElementById('cardEtfDetails');
+    const cardsMajor = document.querySelectorAll('.card-major-players');
+    const cardsPatterns = document.querySelectorAll('.card-patterns');
+    
+    if (isEtfAsset) {
+      if (cardEtf) cardEtf.style.display = 'flex';
+      cardsMajor.forEach(el => el.style.display = 'none');
+      cardsPatterns.forEach(el => el.style.display = 'none');
+      
+      // Fetch and override ETF metadata to ensure 100% accurate display names
+      const etfDetails = window.DataEngine.getETFDetails(stockId, latestBar.close);
+      document.getElementById('hdrStockName').innerText = etfDetails.name;
+      document.getElementById('lblChatActiveStock').innerText = `${etfDetails.name} (${stockId})`;
+      document.getElementById('hdrStockIndustry').innerText = `[ETF基金]`;
+      activeStockName = etfDetails.name;
+      
+      // Populate ETF specific card
+      updateEtfDetailsCard(stockId, latestBar.close);
+    } else {
+      if (cardEtf) cardEtf.style.display = 'none';
+      cardsMajor.forEach(el => el.style.display = 'flex');
+      cardsPatterns.forEach(el => el.style.display = 'flex');
+    }
+
+    updatePatternsCard(computedHistory);
+    updateMultiTimeframeCard(computedHistory);
+    updateIndicatorsTable(latestBar);
+
+    // 5. Fetch chips after price-only blocks are already refreshed.
+    const chips = await window.DataEngine.fetchInstitutionalFlows(stockId, computedHistory, activeFinmindKey);
+    if (requestId !== currentLoadRequestId) {
+      // Clean up loaders on cancellation
+      hideCardLoader('cardInstitutions');
+      hideCardLoader('cardMajorPlayers');
+      hideCardLoader('cardSuggestions');
+      return;
+    }
+    activeChipData = chips;
+
+    // Hide loaders on chips cards immediately after second fetch resolves
+    hideCardLoader('cardInstitutions');
+    hideCardLoader('cardMajorPlayers');
+    hideCardLoader('cardSuggestions');
+
+    updateTechnicalOverview(computedHistory, chips);
+    updateInstitutionalTable(chips);
+    updateMajorPlayersTable(computedHistory, chips);
+    updateSuggestionsCard(computedHistory, chips);
+  } catch (err) {
+    console.error("Failed to load stock data synchronously:", err);
+    // Remove all loader overlays in case of uncaught execution exceptions
+    document.querySelectorAll('.card-loading-overlay').forEach(el => el.remove());
   }
-
-  updatePatternsCard(computedHistory);
-  updateMultiTimeframeCard(computedHistory);
-  updateIndicatorsTable(latestBar);
-
-  // 5. Fetch chips after price-only blocks are already refreshed.
-  const chips = await window.DataEngine.fetchInstitutionalFlows(stockId, computedHistory, activeFinmindKey);
-  if (requestId !== currentLoadRequestId) return;
-  activeChipData = chips;
-
-  updateTechnicalOverview(computedHistory, chips);
-  updateInstitutionalTable(chips);
-  updateMajorPlayersTable(computedHistory, chips);
-  updateSuggestionsCard(computedHistory, chips);
 }
 
 /**
@@ -1612,8 +1649,8 @@ function updateFavStarState(code) {
 /**
  * Renders Stock/ETF profile details and industry allocation progress bars
  */
-function updateProfileAnalysisCard(stockId) {
-  const profile = window.DataEngine.getStockProfile(stockId);
+function updateProfileAnalysisCard(stockId, resolvedName = '', resolvedIndustry = '') {
+  const profile = window.DataEngine.getStockProfile(stockId, resolvedName, resolvedIndustry);
   const isEtf = profile.isEtf;
   
   // 1. Update Title dynamically
@@ -1691,4 +1728,40 @@ function triggerProfileAnimations() {
       el.style.width = targetWidth;
     }
   });
+}
+
+/**
+ * Shows a premium glassmorphic loading spinner overlay on a card
+ * @param {string} cardId - The DOM element ID of the card
+ * @param {string} loadingText - Text to display below the spinner
+ */
+function showCardLoader(cardId, loadingText = '資料載入中...') {
+  const card = document.getElementById(cardId);
+  if (!card) return;
+  
+  // Remove existing loader if any
+  hideCardLoader(cardId);
+  
+  const loader = document.createElement('div');
+  loader.className = 'card-loading-overlay';
+  loader.innerHTML = `
+    <div class="spinner"></div>
+    <span>${loadingText}</span>
+  `;
+  card.appendChild(loader);
+}
+
+/**
+ * Hides the loading spinner overlay from a card
+ * @param {string} cardId - The DOM element ID of the card
+ */
+function hideCardLoader(cardId) {
+  const card = document.getElementById(cardId);
+  if (!card) return;
+  const loader = card.querySelector('.card-loading-overlay');
+  if (loader) {
+    // Fade out animation before removal
+    loader.style.opacity = '0';
+    setTimeout(() => loader.remove(), 300);
+  }
 }
