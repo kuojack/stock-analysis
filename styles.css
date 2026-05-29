@@ -1581,6 +1581,34 @@ input, textarea, select {
   font-size: 11px;
 }
 
+/* Beautiful Markdown Tables in Chat */
+.msg-content table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 10px 0;
+  font-size: 11px;
+  background: rgba(255, 255, 255, 0.01);
+  border: 1px solid var(--border-card);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.msg-content th, .msg-content td {
+  padding: 8px 10px;
+  text-align: left;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.msg-content th {
+  background: rgba(10, 132, 255, 0.1);
+  color: #fff;
+  font-weight: 600;
+}
+
+.msg-content tr:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
 .highlight-stock {
   font-weight: 600;
   color: var(--color-warning);

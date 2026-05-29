@@ -12,6 +12,7 @@ let activeStockName = '致茂';  // Default active stock name
 let activeStockChange = '+3.16%'; // Default active stock change percent
 let activeStockData = null;   // Active calculated stock payload
 let activeChipData = null;    // Active institutional chips payload
+let currentLoadRequestId = 0; // Async request tracking ID to prevent race conditions
 
 // Watchlist memory
 let watchlist = [];
@@ -269,6 +270,13 @@ function initAppEvents() {
           chartInstance.resize();
         }, 50);
       }
+
+      // If switching to analysis data tab, re-trigger progress bar animations
+      if (tab === 'analysis') {
+        setTimeout(() => {
+          triggerProfileAnimations();
+        }, 50);
+      }
     });
   });
 
@@ -480,6 +488,7 @@ function updateApiStatus() {
  * Load Stock Data, calculate indicators, and render UI elements
  */
 async function loadStockData(stockId) {
+  const requestId = ++currentLoadRequestId;
   activeStockCode = stockId;
   const klineLoader = document.getElementById('chartLoader');
   if (klineLoader) {
@@ -489,6 +498,7 @@ async function loadStockData(stockId) {
 
   // 1. Fetch Price Bars
   const result = await window.DataEngine.fetchStockData(stockId, activeFinmindKey);
+  if (requestId !== currentLoadRequestId) return;
   
   // Update Header Stock Metadata
   document.getElementById('hdrStockName').innerText = result.metadata.name;
@@ -507,6 +517,7 @@ async function loadStockData(stockId) {
 
   // 3. Fetch Chips (三大法人)
   const chips = await window.DataEngine.fetchInstitutionalFlows(stockId, computedHistory, activeFinmindKey);
+  if (requestId !== currentLoadRequestId) return;
   activeChipData = chips;
 
   // Update Header Ticker Bar numbers based on latest bar
@@ -588,6 +599,7 @@ async function loadStockData(stockId) {
   updateInstitutionalTable(chips);
   updateMajorPlayersTable(computedHistory, chips);
   updatePatternsCard(computedHistory);
+  updateMultiTimeframeCard(computedHistory);
   updateIndicatorsTable(latestBar);
   updateSuggestionsCard(computedHistory, chips);
   updateProfileAnalysisCard(stockId);
@@ -830,6 +842,80 @@ function updatePatternsCard(history) {
 }
 
 /**
+ * Dynamically render Multi-Timeframe Analysis cards (60分K, 日K, 週K)
+ * Generates signals from the current stock's computed indicators so they
+ * properly update on every stock switch instead of showing stale hardcoded text.
+ */
+function updateMultiTimeframeCard(history) {
+  const latest = history[history.length - 1];
+  const prev = history[history.length - 2] || latest;
+  const prev5 = history[history.length - 6] || latest;
+  const prev20 = history[history.length - 21] || latest;
+
+  // --- Short-term (60分K / Intraday proxy) ---
+  const shortBullish = latest.close > latest.bbMiddle && latest.K > latest.D;
+  const tfShortTag = document.getElementById('tfShortTag');
+  const tfShortDesc = document.getElementById('tfShortDesc');
+  if (tfShortTag && tfShortDesc) {
+    if (shortBullish) {
+      tfShortTag.innerText = '偏多';
+      tfShortTag.className = 'tf-tag text-up';
+      tfShortDesc.innerText = '價位站上中軌，短線多頭控盤，KD 黃金交叉偏多';
+    } else if (latest.K < latest.D && latest.close < latest.bbMiddle) {
+      tfShortTag.innerText = '偏空';
+      tfShortTag.className = 'tf-tag text-down';
+      tfShortDesc.innerText = '價位跌破中軌，KD 死亡交叉，短線偏空防守';
+    } else {
+      tfShortTag.innerText = '中性';
+      tfShortTag.className = 'tf-tag text-warning';
+      tfShortDesc.innerText = '短線多空交錯，KD 糾纏中軌附近，等待方向突破';
+    }
+  }
+
+  // --- Medium-term (日K) ---
+  const isMaBull = latest.sma5 > latest.sma20 && latest.sma20 > latest.sma60;
+  const mediumUp = latest.close > prev5.close;
+  const tfMediumTag = document.getElementById('tfMediumTag');
+  const tfMediumDesc = document.getElementById('tfMediumDesc');
+  if (tfMediumTag && tfMediumDesc) {
+    if (isMaBull && mediumUp) {
+      tfMediumTag.innerText = '多頭';
+      tfMediumTag.className = 'tf-tag text-up';
+      tfMediumDesc.innerText = '多頭結構，均線多頭排列 (5>20>60)，中線偏多操作';
+    } else if (!isMaBull && !mediumUp) {
+      tfMediumTag.innerText = '偏空';
+      tfMediumTag.className = 'tf-tag text-down';
+      tfMediumDesc.innerText = '均線空頭排列，中線趨勢偏弱，宜觀望或做空避險';
+    } else {
+      tfMediumTag.innerText = '整理';
+      tfMediumTag.className = 'tf-tag text-warning';
+      tfMediumDesc.innerText = '均線糾纏，中線趨勢未明確，等待帶量突破方向';
+    }
+  }
+
+  // --- Long-term (週K) ---
+  const longUp = latest.close > prev20.close;
+  const aboveSma60 = latest.sma60 && latest.close > latest.sma60;
+  const tfLongTag = document.getElementById('tfLongTag');
+  const tfLongDesc = document.getElementById('tfLongDesc');
+  if (tfLongTag && tfLongDesc) {
+    if (longUp && aboveSma60) {
+      tfLongTag.innerText = '偏多';
+      tfLongTag.className = 'tf-tag text-up';
+      tfLongDesc.innerText = '長線穩步墊高，站穩 60 日均線上方，長線偏多格局';
+    } else if (!longUp && !aboveSma60) {
+      tfLongTag.innerText = '偏空';
+      tfLongTag.className = 'tf-tag text-down';
+      tfLongDesc.innerText = '長線跌破季均線，趨勢轉弱，長線空方控盤';
+    } else {
+      tfLongTag.innerText = '中性';
+      tfLongTag.className = 'tf-tag text-warning';
+      tfLongDesc.innerText = '長線在季均線附近拉鋸，趨勢尚未確立方向';
+    }
+  }
+}
+
+/**
  * Render Technical Indicator summary rows
  */
 function updateIndicatorsTable(latestBar) {
@@ -987,7 +1073,7 @@ function updateEtfDetailsCard(stockId, currentPrice) {
       <span class="etf-hold-code">${hold.code}</span>
       <span class="etf-hold-name">${hold.name}</span>
       <div class="etf-progress-bar-container">
-        <div class="etf-progress-bar" style="width: 0%;"></div>
+        <div class="etf-progress-bar" data-width="${hold.weight}%" style="width: 0%;"></div>
       </div>
       <span class="etf-hold-weight">${hold.weight.toFixed(1)}%</span>
     `;
@@ -997,7 +1083,7 @@ function updateEtfDetailsCard(stockId, currentPrice) {
     setTimeout(() => {
       const progressBar = row.querySelector('.etf-progress-bar');
       if (progressBar) {
-        progressBar.style.width = `${hold.weight}%`;
+        progressBar.style.width = progressBar.dataset.width;
       }
     }, 50);
   });
@@ -1203,7 +1289,7 @@ function compileStockPrompt(userQuestion) {
 
     return `
 你是一位頂級的證券分析顧問與量化操盤手，同時也是指數股票型基金（ETF）研究專家。
-現在請根據我提供的 ETF 即時行情、估值折溢價、成分股組成結構與法人籌碼數據，對用戶的問題進行深度、客觀且專業的推理解答。
+現在請根據我提供的 ETF 即時行情、估值折溢價、成分股組成結構與法人籌碼數據，對用戶的問題進行深度、客觀且專業的解答。
 
 ==================【ETF 高密度數據面板】==================
 ETF 代號與名稱: ${activeStockCode} ${stockName}
@@ -1229,11 +1315,13 @@ ${chipText}
 ${userQuestion}
 
 ==================【你需遵循的回覆規則】==================
-1. 請以「繁體中文（台灣習慣術語）」作答，使用專業的 ETF 分析語氣（如套利邊際、成份股權重板塊、溢價追高風險等），避免空泛客套。
-2. 緊密結合上方的成分股結構（例如大盤型 ETF 中台積電權重比，或是高股息 ETF 中航運/電子板塊佔比）、折溢價合理度與法人買賣超，進行客觀理性分析。
-3. 採用 Markdown 格式輸出，重點內容可用加粗顯示，使閱讀體驗大氣專業。
-4. 在報告結尾，務必提供具體的「ETF 佈局與操作建議（包含定期定額區間、單筆分批買點、溢價折價對應策略）」。
-5. 回覆前請特別強調你是根據此時此刻的「真實 ETF 即時折溢價與持股權重」在為使用者提供專屬諮詢。
+1. 請以「繁體中文（台灣習慣術語）」作答，使用專業、親切且客觀的投顧分析語氣，避免空泛套話或冷冰冰的官方發言。
+2. 回答時請區分以下情況：
+   - 【情況 A - 詢問此 ETF 行情/指標/籌碼或操作建議】：請緊密結合上方「數據面板」中的折溢價率、核心成分股比重與法人動向，進行邏輯嚴密的推演分析。並在結尾提供具體的 ETF 佈局與操作點位建議（包含定期定額或分批買點）。
+   - 【情況 B - 詢問概念性問題、一般問候、或無關的閒聊】：請直接以專業顧問身份「自然流暢地回答」即可。切勿強行套用上方個股數據，也無須每次都硬塞免責聲明或買賣區間點位，避免顯得突兀或答非所問。
+3. 採用 Markdown 格式輸出，支持標題、加粗、列表與 Markdown 表格（若能將分析結果整理成表格會顯得極其專業）。
+4. 請勿在每次回覆的開頭或結尾重複使用生硬的公式化免責聲明，應讓專業性極其自然地融入您的回答中。
+5. 視是用戶的問題，自然提及您是根據此時此刻的真實折溢價與持股權重進行即時分析。
 `;
   }
 
@@ -1275,11 +1363,13 @@ ${chipText}
 ${userQuestion}
 
 ==================【你需遵循的回覆規則】==================
-1. 請以「繁體中文（台灣習慣術語）」作答，使用專業的金融分析語氣，避免空泛客套。
-2. 緊密結合上方的技術指標（均線、KD、MACD、布林通道）和籌碼面（外資投信動向）進行邏輯推演，不要給予模稜兩可的答案。
-3. 採用 Markdown 格式輸出，重點內容可用加粗顯示，使閱讀體驗大氣專業。
-4. 在報告結尾，務必提供具體的「操盤策略建議（包含進場、加碼、停損/防守價位）」。
-5. 回覆前請特別強調你是根據此時此刻的「真實圖表指標數值」在為使用者提供專屬諮詢。
+1. 請以「繁體中文（台灣習慣術語）」作答，使用專業、親切且客觀的投顧分析語氣，避免空泛套話或冷冰冰的官方發言。
+2. 回答時請區分以下情況：
+   - 【情況 A - 詢問此個股行情/技術指標/籌碼或操作建議】：請緊密結合上方「數據面板」中的技術指標（如均線、KD、MACD、布林通道）和籌碼面（外資投信動向）進行邏輯推演，不要給予模糊答案。並在結尾提供具體的操盤策略建議（包含合理的進場、加碼、停損/防守價位）。
+   - 【情況 B - 詢問概念性問題（如：什麼是布林通道？）、一般問候、或無關的閒聊】：請直接以專業顧問身份「自然流暢地回答」即可。切勿強行套用上方個股數據，也無須每次都硬塞免責聲明或買賣區間點位，避免顯得突兀或答非所問。
+3. 採用 Markdown 格式輸出，支持標題、加粗、列表與 Markdown 表格（若能將分析結果整理成表格會顯得極其專業）。
+4. 請勿在每次回覆的開頭或結尾重複使用生硬的公式化免責聲明，應讓專業性極其自然地融入您的回答中。
+5. 視是用戶的問題，自然提及您是根據此時此刻的真實數據為用戶提供專屬諮詢。
 `;
 }
 
@@ -1352,6 +1442,10 @@ function removeThinkingIndicator(id) {
  * A highly robust, lightweight Markdown-to-HTML parser using Regex
  */
 function formatMarkdown(text) {
+  if (window.marked && typeof window.marked.parse === 'function') {
+    return window.marked.parse(text);
+  }
+
   let html = text;
 
   // Escape HTML tags to prevent injections but allow our parsed styling
@@ -1363,7 +1457,6 @@ function formatMarkdown(text) {
 
   // Bullet items (* item or - item)
   html = html.replace(/^\s*[\*\-]\s+(.*?)$/gm, '<li>$1</li>');
-  html = html.replace(/(<li>.*?<\/li>)/s, '<ul>$1</ul>'); // wrap with ul (approximate)
 
   // Numbered lists (1. item)
   html = html.replace(/^\s*\d+\.\s+(.*?)$/gm, '<li>$1</li>');
@@ -1558,7 +1651,7 @@ function updateProfileAnalysisCard(stockId) {
       row.innerHTML = `
         <span class="profile-ind-name" title="${ind.name}">${ind.name}</span>
         <div class="profile-progress-bar-container">
-          <div class="profile-progress-bar" style="width: 0%;"></div>
+          <div class="profile-progress-bar" data-width="${ind.weight}%" style="width: 0%;"></div>
         </div>
         <span class="profile-ind-weight">${ind.weight.toFixed(1)}%</span>
       `;
@@ -1568,9 +1661,23 @@ function updateProfileAnalysisCard(stockId) {
       setTimeout(() => {
         const progressBar = row.querySelector('.profile-progress-bar');
         if (progressBar) {
-          progressBar.style.width = `${ind.weight}%`;
+          progressBar.style.width = progressBar.dataset.width;
         }
       }, 50);
     });
   }
+}
+
+/**
+ * Triggers/Replays the progress bar animations for profile & ETF cards
+ */
+function triggerProfileAnimations() {
+  document.querySelectorAll('.profile-progress-bar, .etf-progress-bar').forEach(el => {
+    const targetWidth = el.dataset.width;
+    if (targetWidth) {
+      el.style.width = '0%';
+      el.offsetHeight; // Force reflow
+      el.style.width = targetWidth;
+    }
+  });
 }

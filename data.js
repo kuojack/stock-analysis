@@ -14,7 +14,15 @@ class DataEngine {
       "2454": { name: "聯發科", industry: "IC設計", basePrice: 1100 }
     };
 
-    const stock = stocks[stockId] || { name: "未知股票", industry: "其他", basePrice: 100 };
+    let stock = stocks[stockId];
+    if (!stock) {
+      const profile = this.getStockProfile(stockId);
+      stock = {
+        name: profile.name,
+        industry: profile.isEtf ? "ETF基金" : (profile.industries[0]?.name || "上市櫃"),
+        basePrice: 100
+      };
+    }
     const data = [];
     let currentPrice = stock.basePrice;
     
@@ -102,20 +110,27 @@ class DataEngine {
         name = stocksList[stockId].name;
         industry = stocksList[stockId].industry;
       } else {
-        // Fetch from stock name database if possible or just parse a default
+        // Fetch from stock name database if possible or just parse a default (with global cache)
         try {
-          const infoUrl = `https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockInfo${apiKey ? `&token=${apiKey}` : ''}`;
-          const infoRes = await fetch(infoUrl);
-          const infoData = await infoRes.json();
-          if (infoData.status === 200 && infoData.data) {
-            const match = infoData.data.find(s => s.stock_id === stockId);
+          let infoData = window.taiwanStockInfoCache;
+          if (!infoData) {
+            const infoUrl = `https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockInfo${apiKey ? `&token=${apiKey}` : ''}`;
+            const infoRes = await fetch(infoUrl);
+            const res = await infoRes.json();
+            if (res.status === 200 && res.data) {
+              window.taiwanStockInfoCache = res.data;
+              infoData = res.data;
+            }
+          }
+          if (infoData) {
+            const match = infoData.find(s => s.stock_id === stockId);
             if (match) {
               name = match.stock_name;
               industry = match.industry_category || "上市櫃";
             }
           }
         } catch (e) {
-          console.log("Could not fetch stock info, using default name.");
+          console.log("Could not fetch stock info, using default name.", e);
         }
       }
 
@@ -525,7 +540,20 @@ class DataEngine {
       throw new Error("請先配置 Google AI Studio (Gemini) API Key！");
     }
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+    // Map potential experimental or placeholder model IDs to valid active API models to prevent 404s
+    let apiModel = model;
+    const modelMapping = {
+      'gemini-3.5-flash': 'gemini-2.5-flash',
+      'gemini-3-flash': 'gemini-2.5-flash',
+      'gemini-3.1-flash-lite': 'gemini-2.5-flash',
+      'gemini-3.1-pro': 'gemini-2.5-pro',
+      'gemini-2.5-flash-lite': 'gemini-2.5-flash'
+    };
+    if (modelMapping[model]) {
+      apiModel = modelMapping[model];
+    }
+
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${apiModel}:generateContent?key=${apiKey}`;
 
     const requestBody = {
       contents: [
