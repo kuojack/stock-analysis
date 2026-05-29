@@ -519,11 +519,6 @@ async function loadStockData(stockId) {
     chartInstance.setData(computedHistory);
   }
 
-  // 3. Fetch Chips (三大法人)
-  const chips = await window.DataEngine.fetchInstitutionalFlows(stockId, computedHistory, activeFinmindKey);
-  if (requestId !== currentLoadRequestId) return;
-  activeChipData = chips;
-
   // Update Header Ticker Bar numbers based on latest bar
   const latestBar = computedHistory[computedHistory.length - 1];
   const prevBar = computedHistory[computedHistory.length - 2] || latestBar;
@@ -556,14 +551,14 @@ async function loadStockData(stockId) {
   hdrPct.innerText = `(${priceDiffPct.toFixed(2)}%)`;
   hdrPct.className = isUp ? 'text-up' : 'text-down';
 
-  // Volume & Extremes
-  document.getElementById('hdrSingleVol').innerText = Math.floor(latestBar.volume * 0.05 + 1); // Mock single vol
+  // FinMind daily price data provides total volume and OHLC, but not order-book or intraday split fields.
+  document.getElementById('hdrSingleVol').innerText = '--';
   document.getElementById('hdrTotalVol').innerText = latestBar.volume;
-  document.getElementById('hdrBidPrice').innerText = latestBar.close.toFixed(2);
-  document.getElementById('hdrAskPrice').innerText = (latestBar.close + (isUp ? 0.5 : -0.5)).toFixed(2);
+  document.getElementById('hdrBidPrice').innerText = '--';
+  document.getElementById('hdrAskPrice').innerText = '--';
   document.getElementById('hdrAvgPrice').innerText = ((latestBar.open + latestBar.close + latestBar.high + latestBar.low) / 4).toFixed(2);
-  document.getElementById('hdrInnerVol').innerText = Math.floor(latestBar.volume * 0.48);
-  document.getElementById('hdrOuterVol').innerText = Math.floor(latestBar.volume * 0.52);
+  document.getElementById('hdrInnerVol').innerText = '--';
+  document.getElementById('hdrOuterVol').innerText = '--';
 
   document.getElementById('hdrOpenPrice').innerText = latestBar.open.toFixed(2);
   document.getElementById('hdrHighPrice').innerText = latestBar.high.toFixed(2);
@@ -599,12 +594,18 @@ async function loadStockData(stockId) {
     cardsPatterns.forEach(el => el.style.display = 'flex');
   }
 
-  updateTechnicalOverview(computedHistory, chips);
-  updateInstitutionalTable(chips);
-  updateMajorPlayersTable(computedHistory, chips);
   updatePatternsCard(computedHistory);
   updateMultiTimeframeCard(computedHistory);
   updateIndicatorsTable(latestBar);
+
+  // 5. Fetch chips after price-only blocks are already refreshed.
+  const chips = await window.DataEngine.fetchInstitutionalFlows(stockId, computedHistory, activeFinmindKey);
+  if (requestId !== currentLoadRequestId) return;
+  activeChipData = chips;
+
+  updateTechnicalOverview(computedHistory, chips);
+  updateInstitutionalTable(chips);
+  updateMajorPlayersTable(computedHistory, chips);
   updateSuggestionsCard(computedHistory, chips);
 }
 
@@ -798,13 +799,13 @@ function updateMajorPlayersTable(history, chips) {
     tbody.appendChild(tr);
   });
 
-  // Major conclusion
+  // Major-player flow is an estimate derived from FinMind法人資料與成交量；FinMind does not expose real主力帳戶明細.
   const concEl = document.getElementById('lblMajorConclusion');
   if (latestAccum > 0) {
-    concEl.innerText = "結論：主力吸籌結構明顯，10日累計翻紅，中線波段籌碼安定。";
+    concEl.innerText = "結論：推估主力吸籌結構轉強，10日累計翻紅；此區塊為量價與法人資料推估。";
     concEl.style.borderLeftColor = "var(--color-up)";
   } else {
-    concEl.innerText = "結論：主力短線呈買超，但10日累計籌碼仍偏空，宜採短進短出策略。";
+    concEl.innerText = "結論：推估主力短線仍偏保守；此區塊為量價與法人資料推估。";
     concEl.style.borderLeftColor = "var(--color-warning)";
   }
 }
@@ -1291,11 +1292,10 @@ function buildActiveStockContext() {
   const profileText = [
     `- 類型: ${isEtf ? 'ETF' : '個股'}`,
     `- 基本資料名稱: ${profile.name || stockName}`,
-    `- ${isEtf ? '基金經理人' : '董事長 / 總裁'}: ${profile.manager || '資料不足'}`,
-    `- ${isEtf ? '基金規模' : '實收資本額'}: ${profile.size || '資料不足'}`,
-    `- ${isEtf ? '上市成立日期' : '上市日期'}: ${profile.listedDate || '資料不足'}`,
-    `- ${isEtf ? '配息頻率' : '股利配息頻率'}: ${profile.payout || '資料不足'}`,
-    `- ${isEtf ? '追蹤指數' : '主要經營業務'}: ${profile.indexOrProducts || '資料不足'}`
+    `- 市場別: ${profile.market || '資料不足'}`,
+    `- 產業/分類: ${profile.indexOrProducts || '資料不足'}`,
+    `- 資料日期: ${profile.dataDate || profile.listedDate || '資料不足'}`,
+    `- 資料來源: ${profile.source || '資料不足'}`
   ].join('\n');
   const industriesText = profile.industries?.length
     ? profile.industries.map(ind => `- ${ind.name}: ${formatPercent(ind.weight, 1)}`).join('\n')
@@ -1323,9 +1323,10 @@ function buildActiveStockContext() {
     ].join('\n'),
     accumulationText: accum
       ? [
-          `- 吃貨評分: ${accum.score} 分`,
+          `- 推估吃貨評分: ${accum.score} 分`,
           `- 狀態判定: ${accumStatusText}`,
-          `- 判定依據: ${accum.detail}`
+          `- 判定依據: ${accum.detail}`,
+          `- 資料來源: 依 FinMind 法人買賣超與日線量價推估，非交易所主力帳戶明細`
         ].join('\n')
       : 'ETF 不使用個股主力吃貨評分。'
   };
@@ -1367,7 +1368,7 @@ ${ctx.technicalText}
 ==================【籌碼資料】==================
 ${ctx.chipsText}
 
-==================【主力吃貨評分】==================
+==================【主力吃貨推估】==================
 ${ctx.accumulationText}
 
 ==================【用戶當前詢問的問題】==================
@@ -1637,18 +1638,16 @@ function updateProfileAnalysisCard(stockId) {
 
     if (isEtf) {
       addDetailRow('ETF 名稱', profile.name || `ETF ${stockId}`);
-      addDetailRow('基金經理人', profile.manager);
-      addDetailRow('基金規模', profile.size);
-      addDetailRow('上市成立日期', profile.listedDate);
-      addDetailRow('配息頻率', profile.payout);
-      addDetailRow('追蹤指數', `<span class="text-highlight" title="${profile.indexOrProducts}">${profile.indexOrProducts}</span>`);
+      addDetailRow('市場別', profile.market || '資料不足');
+      addDetailRow('分類 / 產業', `<span class="text-highlight" title="${profile.indexOrProducts}">${profile.indexOrProducts || '資料不足'}</span>`);
+      addDetailRow('資料日期', profile.dataDate || profile.listedDate || '資料不足');
+      addDetailRow('資料來源', profile.source || '資料不足');
     } else {
       addDetailRow('股票名稱', profile.name || `台股 ${stockId}`);
-      addDetailRow('董事長 / 總裁', profile.manager);
-      addDetailRow('實收資本額', profile.size);
-      addDetailRow('上市日期', profile.listedDate);
-      addDetailRow('股利配息頻率', profile.payout);
-      addDetailRow('主要經營業務', `<span class="text-highlight" title="${profile.indexOrProducts}">${profile.indexOrProducts}</span>`);
+      addDetailRow('市場別', profile.market || '資料不足');
+      addDetailRow('產業別', `<span class="text-highlight" title="${profile.indexOrProducts}">${profile.indexOrProducts || '資料不足'}</span>`);
+      addDetailRow('資料日期', profile.dataDate || profile.listedDate || '資料不足');
+      addDetailRow('資料來源', profile.source || '資料不足');
     }
   }
 

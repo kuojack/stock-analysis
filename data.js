@@ -35,6 +35,27 @@ class DataEngine {
     return Array.isArray(data.data) ? data.data : [];
   }
 
+  static getMarketLabel(type) {
+    const marketMap = {
+      twse: '上市 (TWSE)',
+      tpex: '上櫃 (TPEx)',
+      emerging: '興櫃',
+      public: '公開發行'
+    };
+    return marketMap[type] || type || '市場別資料不足';
+  }
+
+  static getCachedStockInfo(stockId) {
+    const cleanId = String(stockId || '').trim();
+    const infoData = window.taiwanStockInfoCache;
+    if (!Array.isArray(infoData)) return null;
+
+    const matches = infoData.filter(s => s.stock_id === cleanId);
+    if (matches.length === 0) return null;
+
+    return matches.find(s => s.industry_category && s.industry_category !== '電子工業') || matches[0];
+  }
+
   // Hardcoded highly realistic mock data fallback to ensure 100% out-of-the-box working dashboard
   static getMockStockData(stockId) {
     const stocks = {
@@ -126,39 +147,26 @@ class DataEngine {
         volume: Math.floor(Number(item.Trading_Volume || 0) / 1000) // Convert shares to 張
       }));
 
-      // Get Stock Name / Info from TaiwanStockInfo or mock it based on code
-      const stocksList = {
-        "2360": { name: "致茂", industry: "IC設計" },
-        "2330": { name: "台積電", industry: "晶圓代工" },
-        "2317": { name: "鴻海", industry: "電子代工" },
-        "2454": { name: "聯發科", industry: "IC設計" }
-      };
-
       // Try to resolve stock name
       let name = "台股 " + stockId;
       let industry = "上市櫃";
 
-      if (stocksList[stockId]) {
-        name = stocksList[stockId].name;
-        industry = stocksList[stockId].industry;
-      } else {
-        // Fetch from stock name database if possible or just parse a default (with global cache)
-        try {
-          let infoData = window.taiwanStockInfoCache;
-          if (!infoData) {
-            infoData = await this.fetchFinMindData({ dataset: 'TaiwanStockInfo' }, apiKey);
-            window.taiwanStockInfoCache = infoData;
-          }
-          if (infoData) {
-            const match = infoData.find(s => s.stock_id === stockId);
-            if (match) {
-              name = match.stock_name;
-              industry = match.industry_category || "上市櫃";
-            }
-          }
-        } catch (e) {
-          console.log("Could not fetch stock info, using default name.", e);
+      // Fetch from stock name database when possible, and keep it cached for profile rendering.
+      try {
+        let infoData = window.taiwanStockInfoCache;
+        if (!infoData) {
+          infoData = await this.fetchFinMindData({ dataset: 'TaiwanStockInfo' }, apiKey);
+          window.taiwanStockInfoCache = infoData;
         }
+        if (infoData) {
+          const match = this.getCachedStockInfo(stockId);
+          if (match) {
+            name = match.stock_name;
+            industry = match.industry_category || "上市櫃";
+          }
+        }
+      } catch (e) {
+        console.log("Could not fetch stock info, using default name.", e);
       }
 
       if (apiKey && typeof window.updateFinmindStatus === 'function') {
@@ -838,66 +846,14 @@ class DataEngine {
     const cleanId = stockId.trim();
     const isEtf = this.isETF(cleanId);
     
-    // 1. Curated Stocks and ETFs Database Seeds
-    const stockSeeds = {
-      "2330": {
-        name: "台積電",
-        manager: "魏哲家 (董事長兼總裁)",
-        size: "2,593.0 億元 (實收資本額)",
-        listedDate: "1994-09-05",
-        payout: "季配息 (每年 3、6、9、12月分派)",
-        indexOrProducts: "專業積體電路製造、晶圓代工與先進封裝研發",
-        industries: [
-          { name: "高效能運算 (HPC)", weight: 46 },
-          { name: "智慧型手機 (Mobile)", weight: 38 },
-          { name: "物聯網 (IoT)", weight: 8 },
-          { name: "車用電子 (Automotive)", weight: 6 },
-          { name: "消費性電子與其他", weight: 2 }
-        ]
-      },
-      "2360": {
-        name: "致茂",
-        manager: "黃欽明 (董事長兼執行長)",
-        size: "42.5 億元 (實收資本額)",
-        listedDate: "1996-09-20",
-        payout: "每半年配息 (通常於 4、9月發放)",
-        indexOrProducts: "精密量測儀器、半導體與先進封裝測試設備、自動化檢測系統",
-        industries: [
-          { name: "半導體及封裝測試系統", weight: 45 },
-          { name: "電動車及綠能測試解決方案", weight: 30 },
-          { name: "智慧製造與自動化整合", weight: 15 },
-          { name: "光電與其他零部件", weight: 10 }
-        ]
-      },
-      "2317": {
-        name: "鴻海",
-        manager: "劉揚偉 (董事長暨總經理)",
-        size: "1,386.3 億元 (實收資本額)",
-        listedDate: "1991-06-18",
-        payout: "年配息 (通常於 7~8 月除息分派)",
-        indexOrProducts: "3C電子產品代工整合服務 (EMS)、AI伺服器、電動車系統研發",
-        industries: [
-          { name: "消費性電子產品", weight: 42 },
-          { name: "雲端網路伺服器及AI產品", weight: 32 },
-          { name: "電腦終端設備", weight: 18 },
-          { name: "電子精密元件與其他", weight: 8 }
-        ]
-      },
-      "2454": {
-        name: "聯發科",
-        manager: "蔡明介 (董事長)",
-        size: "160.0 億元 (實收資本額)",
-        listedDate: "2001-07-23",
-        payout: "每半年配息 (採半年派發＋特息機制)",
-        indexOrProducts: "無線通訊與手持裝置系統單晶片 (SoC)、智慧終端與物聯網晶片",
-        industries: [
-          { name: "行動運算晶片 (智慧手機)", weight: 55 },
-          { name: "智慧終端平台 (電視/物聯網)", weight: 33 },
-          { name: "電源管理晶片及特殊ASIC", weight: 12 }
-        ]
-      }
-    };
-
+    const stockInfo = this.getCachedStockInfo(cleanId);
+    const marketLabel = this.getMarketLabel(stockInfo?.type);
+    const sourcedName = stockInfo?.stock_name || `台股 ${cleanId}`;
+    const sourcedIndustry = stockInfo?.industry_category || "產業資料不足";
+    const sourcedDate = stockInfo?.date || "資料不足";
+    const sourcedSource = stockInfo ? "FinMind TaiwanStockInfo" : "本地 fallback（尚未取得 FinMind 基本資料）";
+    
+    // 1. Curated ETFs Database Seeds
     const etfSeeds = {
       "0050": {
         name: "元大台灣50",
@@ -993,8 +949,30 @@ class DataEngine {
 
     // 2. Resolve Seeds
     if (isEtf) {
+      if (stockInfo) {
+        return {
+          isEtf,
+          name: sourcedName,
+          manager: "FinMind 未提供",
+          size: "FinMind 未提供",
+          listedDate: sourcedDate,
+          payout: "FinMind 未提供",
+          indexOrProducts: sourcedIndustry,
+          market: marketLabel,
+          dataDate: sourcedDate,
+          source: sourcedSource,
+          industries: [{ name: sourcedIndustry, weight: 100 }]
+        };
+      }
+
       if (etfSeeds[cleanId]) {
-        return { isEtf, ...etfSeeds[cleanId] };
+        return {
+          isEtf,
+          market: "ETF 市場別資料不足",
+          dataDate: "資料不足",
+          source: "本地 ETF fallback",
+          ...etfSeeds[cleanId]
+        };
       }
       
       // Fallback ETF Profile Generator
@@ -1003,89 +981,51 @@ class DataEngine {
         seedVal += cleanId.charCodeAt(i);
       }
       
-      const managers = ["張振亞", "李志堅", "王健行", "陳永盛", "劉建國"];
-      const payouts = ["月配息 (每月發放)", "季配息 (1,4,7,10月)", "季配息 (2,5,8,11月)", "半年配息", "年配息"];
-      
       const etfName = this.getETFDetails(cleanId, 100).name;
-      const sizeVal = ((seedVal % 1500) + 150).toFixed(1);
-      const year = 2012 + (seedVal % 12);
-      const month = String((seedVal % 12) + 1).padStart(2, '0');
-      const day = String((seedVal % 28) + 1).padStart(2, '0');
-      
-      // Weights must sum up to exactly 100%
-      const weights = [35.5, 22.8, 16.2, 14.5, 11.0];
-      const industryOptions = [
-        ["半導體業", "電子零組件", "電腦及週邊設備", "金融保險", "其他版塊"],
-        ["電子零組件", "光電板塊", "半導體業", "鋼鐵傳產", "其他高回報股"],
-        ["金融保險業", "電腦週邊", "航運板塊", "通信網路", "其他產業成分"],
-        ["電腦週邊", "半導體業", "電子零組件", "綠能測試", "其他低基期優股"]
-      ];
-      
-      const indNames = industryOptions[seedVal % industryOptions.length];
-      const industries = indNames.map((name, idx) => ({
-        name,
-        weight: weights[idx]
-      }));
 
       return {
         isEtf,
         name: etfName,
-        manager: `${managers[seedVal % managers.length]} (基金經理人)`,
-        size: `${parseFloat(sizeVal).toLocaleString()} 億元`,
-        listedDate: `${year}-${month}-${day}`,
-        payout: payouts[seedVal % payouts.length],
-        indexOrProducts: "臺灣指數公司特定主題量化指數",
-        industries
+        manager: "FinMind 未提供",
+        size: "FinMind 未提供",
+        listedDate: "資料不足",
+        payout: "FinMind 未提供",
+        indexOrProducts: "ETF 追蹤指數資料不足",
+        market: "ETF 市場別資料不足",
+        dataDate: "資料不足",
+        source: "本地 ETF fallback",
+        industries: [{ name: "ETF 分類資料不足", weight: 100 }]
       };
       
     } else {
-      if (stockSeeds[cleanId]) {
-        return { isEtf, ...stockSeeds[cleanId] };
+      if (stockInfo) {
+        return {
+          isEtf,
+          name: sourcedName,
+          manager: "FinMind 未提供",
+          size: "FinMind 未提供",
+          listedDate: sourcedDate,
+          payout: "FinMind 未提供",
+          indexOrProducts: sourcedIndustry,
+          market: marketLabel,
+          dataDate: sourcedDate,
+          source: sourcedSource,
+          industries: [{ name: sourcedIndustry, weight: 100 }]
+        };
       }
       
-      // Fallback Stock Profile Generator
-      let seedVal = 0;
-      for (let i = 0; i < cleanId.length; i++) {
-        seedVal += cleanId.charCodeAt(i);
-      }
-      
-      const chairmen = ["郭台強", "童子賢", "張忠謀", "林百里", "施崇棠", "蔡宏圖"];
-      const payouts = ["年配息 (每年7~8月發放)", "半年配息", "季配息 (每季發放)", "不配息 / 保留盈餘"];
-      const products = [
-        "半導體精密封測服務與晶圓先進製程研發",
-        "通訊終端產品研發、電子精密板塊設計與代工",
-        "智慧車用與電動車綠能檢測、工業自動化控制系統",
-        "高精密光電元件、物聯網晶片設計與雲端技術整合"
-      ];
-      
-      const capital = ((seedVal % 800) + 15).toFixed(1);
-      const year = 1985 + (seedVal % 35);
-      const month = String((seedVal % 12) + 1).padStart(2, '0');
-      const day = String((seedVal % 28) + 1).padStart(2, '0');
-      
-      const weights = [45.0, 30.0, 15.0, 10.0];
-      const industryOptions = [
-        ["消費性電子與代工", "AI與雲端伺服器", "電腦周邊零部件", "其他衍生性業務"],
-        ["車用與電動車電子", "智慧型手機晶片", "物聯網與智慧終端", "其他特用晶片"],
-        ["半導體測試服務", "高精密檢測系統", "自動化與精密量測", "光電與周邊零組件"],
-        ["雲端伺服器與AI晶片", "網通設備與通信晶片", "個人電腦周邊", "其他智慧組件"]
-      ];
-      
-      const indNames = industryOptions[seedVal % industryOptions.length];
-      const industries = indNames.map((name, idx) => ({
-        name,
-        weight: weights[idx]
-      }));
-
       return {
         isEtf,
         name: "台股 " + cleanId,
-        manager: `${chairmen[seedVal % chairmen.length]} (董事長)`,
-        size: `${parseFloat(capital).toLocaleString()} 億元 (實收資本額)`,
-        listedDate: `${year}-${month}-${day}`,
-        payout: payouts[seedVal % payouts.length],
-        indexOrProducts: products[seedVal % products.length],
-        industries
+        manager: "FinMind 未提供",
+        size: "FinMind 未提供",
+        listedDate: "資料不足",
+        payout: "FinMind 未提供",
+        indexOrProducts: "產業資料不足",
+        market: "市場別資料不足",
+        dataDate: "資料不足",
+        source: sourcedSource,
+        industries: [{ name: "產業資料不足", weight: 100 }]
       };
     }
   }
