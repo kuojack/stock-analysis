@@ -24,6 +24,12 @@
 - 自選股清單儲存在瀏覽器 localStorage
 - API Key 以使用者 PIN 加密後儲存在瀏覽器 localStorage
 
+## Data Sources
+
+- 股市行情、台股基本資料與三大法人買賣超資料主要來自 FinMind API。
+- 未提供 FinMind Token 時，網站會優先使用 FinMind 公開資料；若 FinMind 暫時不可用，部分籌碼或展示資料會標示為量價推估或本地模擬資料。
+- ETF 折溢價與 NAV 區塊目前為本地估算，非投信或交易所官方即時淨值；正式交易前請再次核對官方 iNAV、淨值與券商報價。
+
 ## API Keys
 
 此專案是純前端靜態網站，不需要後端伺服器。使用者可在網頁內設定：

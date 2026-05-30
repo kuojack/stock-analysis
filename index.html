@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; connect-src 'self' https://api.finmindtrade.com https://generativelanguage.googleapis.com; img-src 'self' data:; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'none'; form-action 'none'; upgrade-insecure-requests">
   <title>Stock Analysis | 智慧看盤與 AI 個股顧問</title>
   <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -84,7 +85,7 @@
       <aside class="sidebar">
         <!-- Search Ticker -->
         <div class="search-box">
-          <input type="text" id="txtSearchStock" placeholder="輸入台股代碼 (如 2330)..." autocomplete="off">
+          <input type="text" id="txtSearchStock" placeholder="輸入股號或股名 (如 2330 / 台積電)..." autocomplete="off">
           <button id="btnSearchStock">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
               <circle cx="11" cy="11" r="8"></circle>
@@ -92,6 +93,7 @@
             </svg>
           </button>
         </div>
+        <div class="search-suggestions" id="stockSearchSuggestions" hidden></div>
 
         <!-- Quick Switch List -->
         <div class="sidebar-section">
@@ -177,6 +179,7 @@
               <li><span class="label">布林位置</span><span class="value" id="lblBbPos">--</span></li>
               <li><span class="label">布林通道</span><span class="value" id="lblBbChannel">--</span></li>
               <li><span class="label">主力推估</span><span class="value" id="lblAccumulationStatus">--</span></li>
+              <li><span class="label">籌碼來源</span><span class="value" id="lblChipSource">--</span></li>
               <li class="divider"></li>
               <li><span class="label text-highlight">綜合評估</span><span class="value text-highlight font-weight-bold" id="lblComprehensiveEval">--</span></li>
             </ul>
@@ -324,7 +327,7 @@
           <div class="card-header">
             <div class="card-title">
               <span class="title-text">ETF 成分股與折溢價分析</span>
-              <span class="legend-item bb">即時淨值估算</span>
+              <span class="legend-item bb">本地估算，非官方即時淨值</span>
             </div>
           </div>
           <div class="card-body etf-details-body">
@@ -413,7 +416,10 @@
         <!-- Panel 9: 操作建議 -->
         <section class="card card-suggestions" id="cardSuggestions">
           <div class="card-header">
-            <div class="card-title">操作建議</div>
+            <div class="card-title">
+              <span>操作建議</span>
+              <span class="data-source-pill" id="lblSuggestionSource">資料來源：--</span>
+            </div>
           </div>
           <div class="card-body suggestions-layout">
             <div class="suggestions-bullets" id="listSuggestions">
@@ -433,6 +439,7 @@
               <div class="signal-reason" id="lblSignalReason">
                 原因：主力短期動向未明，高檔震盪，多空僵持。
               </div>
+              <div class="signal-detail-list" id="lblSignalDetails"></div>
             </div>
           </div>
         </section>
@@ -445,13 +452,13 @@
         <!-- Section A: Gemini Co-Pilot Dashboard (Gauges) -->
         <div class="ai-dashboard-card">
           <div class="ai-section-title">
-            <span class="ai-icon">✨</span> AI 智能分析與預測
+            <span class="ai-icon">✨</span> 條件式分析儀表
           </div>
           
           <div class="gauges-grid">
             <!-- Win Rate Gauge -->
             <div class="gauge-card">
-              <span class="gauge-title">短線勝率 (AI)</span>
+              <span class="gauge-title">短線條件分數</span>
               <div class="gauge-container">
                 <canvas id="gaugeCanvas" width="140" height="85"></canvas>
                 <div class="gauge-val-overlay">
@@ -463,7 +470,7 @@
 
             <!-- Rise/Fall Probability Chart -->
             <div class="gauge-card">
-              <span class="gauge-title">明日漲跌預測 (AI)</span>
+              <span class="gauge-title">隔日傾向分布</span>
               <div class="pie-container">
                 <canvas id="pieCanvas" width="110" height="110"></canvas>
                 <div class="pie-legend">
@@ -476,7 +483,7 @@
           </div>
           
           <div class="ai-prediction-conclusion" id="lblAiConclusion">
-            預測結論：明日震盪偏多，留意高檔變化。
+            條件結論：目前資料尚未載入，請等待更新。
           </div>
         </div>
 
@@ -640,21 +647,21 @@
       <div class="modal-body">
         <p class="modal-desc">為了對接真實股票數據與啟用 AI 解答，請配置您的 API 金鑰。金鑰將在您的瀏覽器端進行 AES-GCM 軍規加密封存，您的安全隱私 100% 受到保護。</p>
         
-        <form id="frmApiConfig" onsubmit="return false;">
+        <form id="frmApiConfig">
           <div class="form-group">
             <label for="txtFinmindKey">FinMind API Token <span class="badge-optional">(選填，無 Token 可獲取基礎或模擬數據)</span></label>
-            <input type="password" id="txtFinmindKey" placeholder="請輸入您的 FinMind API Token...">
+            <input type="password" id="txtFinmindKey" placeholder="請輸入您的 FinMind API Token..." autocomplete="off" spellcheck="false">
           </div>
           
           <div class="form-group">
             <label for="txtGeminiKey">Google AI Studio (Gemini) API Key <span class="badge-required">(必填)</span></label>
-            <input type="password" id="txtGeminiKey" placeholder="請輸入您的 Gemini API Key..." required>
+            <input type="password" id="txtGeminiKey" placeholder="請輸入您的 Gemini API Key..." required autocomplete="off" spellcheck="false">
           </div>
           
           <div class="form-group">
             <label for="txtUserPin">設置/輸入解密 PIN 碼 <span class="badge-required">(必填, 4-8 位數字或密碼)</span></label>
             <input type="password" id="txtUserPin" placeholder="設置或輸入 PIN 碼，用於解密金鑰..." required autocomplete="new-password">
-            <p class="input-tip">每次開啟網頁時，都需要輸入此 PIN 碼來解密並啟用 API，確保您的 Key 額度安全。</p>
+            <p class="input-tip">金鑰只會以 AES-GCM 加密後存於此瀏覽器。解密使用期間仍會由瀏覽器送往 FinMind/Gemini，請勿在共用或不可信任裝置保存高權限金鑰。</p>
           </div>
 
           <div class="modal-actions">
@@ -675,7 +682,7 @@
       <div class="modal-body">
         <p class="modal-desc">本軟體已檢測到加密金鑰。請輸入您先前設定的 PIN 碼以解密並啟用看盤與 Gemini AI 智慧分析服務。</p>
         
-        <form id="frmPinVerify" onsubmit="return false;">
+        <form id="frmPinVerify">
           <div class="form-group">
             <input type="password" id="txtVerifyPin" placeholder="請輸入 PIN 碼..." required autofocus autocomplete="current-password">
             <div class="error-msg" id="lblPinError">PIN 碼錯誤，請重新輸入！</div>
@@ -691,7 +698,6 @@
   </div>
 
   <!-- Dependencies -->
-  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script src="crypto.js"></script>
   <script src="data.js"></script>
   <script src="chart.js"></script>

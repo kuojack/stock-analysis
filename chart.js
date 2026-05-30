@@ -22,6 +22,9 @@ class StockChart {
     
     // Interactions
     this.mouse = { x: -1, y: -1, active: false };
+    this.lastWidth = 0;
+    this.lastHeight = 0;
+    this.pendingRender = false;
     
     this.initEvents();
   }
@@ -29,7 +32,7 @@ class StockChart {
   setData(historyData) {
     this.data = historyData;
     if (this.loader) this.loader.style.display = 'none';
-    this.render();
+    this.requestRender();
   }
 
   initEvents() {
@@ -42,12 +45,12 @@ class StockChart {
       this.mouse.x = (e.clientX - rect.left) * scaleX;
       this.mouse.y = (e.clientY - rect.top) * scaleY;
       this.mouse.active = true;
-      this.render();
+      this.requestRender();
     });
 
     this.canvas.addEventListener('mouseleave', () => {
       this.mouse.active = false;
-      this.render();
+      this.requestRender();
     });
 
     // Resize observer to handle dynamic grid layout/card size shifts
@@ -65,11 +68,26 @@ class StockChart {
 
   resize() {
     const rect = this.canvas.parentElement.getBoundingClientRect();
-    this.canvas.width = rect.width * window.devicePixelRatio;
-    this.canvas.height = rect.height * window.devicePixelRatio;
+    const nextWidth = Math.round(rect.width * window.devicePixelRatio);
+    const nextHeight = Math.round(rect.height * window.devicePixelRatio);
+    if (nextWidth === this.lastWidth && nextHeight === this.lastHeight) return;
+
+    this.lastWidth = nextWidth;
+    this.lastHeight = nextHeight;
+    this.canvas.width = nextWidth;
+    this.canvas.height = nextHeight;
     this.canvas.style.width = rect.width + 'px';
     this.canvas.style.height = rect.height + 'px';
-    this.render();
+    this.requestRender();
+  }
+
+  requestRender() {
+    if (this.pendingRender) return;
+    this.pendingRender = true;
+    requestAnimationFrame(() => {
+      this.pendingRender = false;
+      this.render();
+    });
   }
 
   render() {

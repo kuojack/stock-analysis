@@ -19,20 +19,43 @@ class DataEngine {
         url.searchParams.set(key, value);
       }
     });
-
-    const headers = {};
     if (apiKey) {
-      headers.Authorization = `Bearer ${apiKey}`;
+      url.searchParams.set('token', apiKey);
     }
 
-    const response = await fetch(url.toString(), { headers });
-    const data = await response.json();
+    const response = await fetch(url.toString());
+    let data;
+    try {
+      data = await response.json();
+    } catch (e) {
+      const error = new Error(`FinMind API 回傳格式不是 JSON，HTTP 狀態碼: ${response.status}`);
+      error.httpStatus = response.status;
+      error.dataset = params.dataset;
+      throw error;
+    }
 
     if (!response.ok || Number(data.status) !== 200) {
-      throw new Error(data.msg || data.message || `FinMind API 呼叫失敗，HTTP 狀態碼: ${response.status}`);
+      const error = new Error(data.msg || data.message || `FinMind API 呼叫失敗，HTTP 狀態碼: ${response.status}`);
+      error.httpStatus = response.status;
+      error.apiStatus = data.status;
+      error.dataset = params.dataset;
+      throw error;
     }
 
     return Array.isArray(data.data) ? data.data : [];
+  }
+
+  static isFinMindAuthError(error) {
+    const message = String(error?.message || '').toLowerCase();
+    return error?.httpStatus === 401 ||
+      error?.httpStatus === 403 ||
+      /token|auth|authorization|permission|forbidden|unauthorized|login|api key|金鑰|權限/.test(message);
+  }
+
+  static updateFinMindRuntimeStatus(status) {
+    if (typeof window.updateFinmindStatus === 'function') {
+      window.updateFinmindStatus(status);
+    }
   }
 
   static getMarketLabel(type) {
@@ -169,19 +192,23 @@ class DataEngine {
         console.log("Could not fetch stock info, using default name.", e);
       }
 
-      if (apiKey && typeof window.updateFinmindStatus === 'function') {
-        window.updateFinmindStatus('valid');
-      }
+      this.updateFinMindRuntimeStatus(apiKey ? 'valid' : 'public');
 
       return {
         metadata: { name, industry, code: stockId },
         history: history
       };
     } catch (e) {
-      console.error("FinMind fetch error, falling back to mock:", e);
-      if (apiKey && typeof window.updateFinmindStatus === 'function') {
-        window.updateFinmindStatus('invalid');
+      console.error("FinMind stock price fetch error:", e);
+      if (apiKey && this.isFinMindAuthError(e)) {
+        this.updateFinMindRuntimeStatus('invalid');
+        const publicResult = await this.fetchStockData(stockId, '');
+        this.updateFinMindRuntimeStatus('invalid');
+        return publicResult;
       }
+
+      console.warn("FinMind 股價資料不可用，改用內建模擬資料。");
+      this.updateFinMindRuntimeStatus('warning');
       return this.getMockStockData(stockId);
     }
   }
@@ -231,21 +258,21 @@ class DataEngine {
           foreign: d.foreign,
           trust: d.trust,
           dealer: d.dealer,
-          total: d.foreign + d.trust + d.dealer
+          total: d.foreign + d.trust + d.dealer,
+          estimated: false
         })).sort((a,b) => b.date.localeCompare(a.date)).slice(0, 20);
 
-        if (apiKey && typeof window.updateFinmindStatus === 'function') {
-          window.updateFinmindStatus('valid');
-        }
+        this.updateFinMindRuntimeStatus(apiKey ? 'valid' : 'public');
       } else {
-        if (apiKey && typeof window.updateFinmindStatus === 'function') {
-          window.updateFinmindStatus('invalid');
-        }
+        console.warn("FinMind 三大法人資料為空，改用智能籌碼推算模組。");
       }
     } catch (e) {
       console.warn("三大法人 FinMind API 串接失敗，改用智能籌碼推算模組:", e);
-      if (apiKey && typeof window.updateFinmindStatus === 'function') {
-        window.updateFinmindStatus('invalid');
+      if (apiKey && this.isFinMindAuthError(e)) {
+        this.updateFinMindRuntimeStatus('invalid');
+        result = await this.fetchInstitutionalFlows(stockId, historyData, '');
+        this.updateFinMindRuntimeStatus('invalid');
+        return result;
       }
     }
 
@@ -268,7 +295,8 @@ class DataEngine {
           foreign,
           trust,
           dealer,
-          total: foreign + trust + dealer
+          total: foreign + trust + dealer,
+          estimated: true
         };
       });
     }
@@ -436,9 +464,6 @@ class DataEngine {
     // Simple robust pattern estimation
     // Find local peaks and troughs in the closing price
     const closes = recent.map(r => r.close);
-    const dates = recent.map(r => r.date);
-
-    // Let's perform a smart structural test
     const lastDay = recent[recent.length - 1];
     
     // We can evaluate if there's a dynamic M-top or W-bottom forming
@@ -453,20 +478,22 @@ class DataEngine {
     //致茂 (2360) starts in a strong breakout, which matches a potential W-Bottom breakout!
     const minClose = Math.min(...closes);
     const maxClose = Math.max(...closes);
+    const neckline = minClose + (maxClose - minClose) * 0.7;
+    const lowerBand = minClose + (maxClose - minClose) * 0.3;
     
     // Simple heuristic
-    if (lastDay.close > (minClose + (maxClose - minClose) * 0.7) && closes[closes.length - 15] < minClose + (maxClose - minClose) * 0.3) {
+    if (lastDay.close > neckline && closes[closes.length - 15] < lowerBand) {
       // Prices fell to a double bottom and rose recently
       wStatus = "已形成";
-      wDetail = "多頭強勢突破頸線 2110";
+      wDetail = `多頭突破近40日推估頸線 ${neckline.toFixed(1)}`;
       wActive = true;
-    } else if (lastDay.close < (minClose + (maxClose - minClose) * 0.3) && closes[closes.length - 15] > minClose + (maxClose - minClose) * 0.7) {
+    } else if (lastDay.close < lowerBand && closes[closes.length - 15] > neckline) {
       mStatus = "已形成";
-      mDetail = "跌破頸線支撐，轉為空頭";
+      mDetail = `跌破近40日推估頸線 ${lowerBand.toFixed(1)}，型態轉弱`;
       mActive = true;
     } else {
-      wDetail = "標準 W 底形成中，待放量突破頸線";
-      mDetail = "雙頂整理中，目前守穩頸線";
+      wDetail = `未突破推估頸線 ${neckline.toFixed(1)}，W底尚未確認`;
+      mDetail = `尚未跌破推估支撐 ${lowerBand.toFixed(1)}，雙頂未確認`;
     }
 
     return {
@@ -490,8 +517,12 @@ class DataEngine {
       return { isAccumulating: false, score: 0, status: "none", detail: "數據收集不足" };
     }
 
-    const recentK = history.slice(-20);
-    const recentChips = chips.slice(-20);
+    const sortedHistory = [...history].sort((a, b) => a.date.localeCompare(b.date));
+    const sortedChips = [...chips].sort((a, b) => a.date.localeCompare(b.date));
+    const recentK = sortedHistory.slice(-20);
+    const recentChips = sortedChips.slice(-20);
+    const rangeK = sortedHistory.slice(-60);
+    const hasEstimatedChips = recentChips.some(c => c.estimated);
 
     // 1. 計算近 20 天價格最大震幅 (Amplitude)
     const closes = recentK.map(d => d.close);
@@ -501,6 +532,12 @@ class DataEngine {
 
     // 2. 計算近 20 天價格淨漲跌幅 (Price Change %)
     const priceChangePct = ((closes[closes.length - 1] - closes[0]) / closes[0]) * 100;
+    const rangeCloses = rangeK.map(d => d.close);
+    const rangeHigh = Math.max(...rangeCloses);
+    const rangeLow = Math.min(...rangeCloses);
+    const rangePosition = rangeHigh !== rangeLow
+      ? ((closes[closes.length - 1] - rangeLow) / (rangeHigh - rangeLow)) * 100
+      : 50;
 
     // 3. 計算近 20 天法人的買超天數與累計買超張數
     let buyDays = 0;
@@ -517,21 +554,28 @@ class DataEngine {
 
     // 條件 A: 股價在橫盤壓縮 (震幅小於 10% 大幅加分)
     if (priceAmplitude <= 8) {
-      score += 35;
+      score += 25;
       reasons.push(`股價處於橫盤壓縮 (近月震幅僅 ${priceAmplitude.toFixed(1)}%)`);
     } else if (priceAmplitude <= 12) {
-      score += 20;
+      score += 12;
       reasons.push(`股價呈現區間整理 (近月震幅 ${priceAmplitude.toFixed(1)}%)`);
     } else {
       reasons.push(`股價波動較為劇烈 (近月震幅 ${priceAmplitude.toFixed(1)}%)`);
     }
 
+    if (rangePosition <= 45) {
+      score += 15;
+      reasons.push(`目前位於近60日相對低檔 (${rangePosition.toFixed(0)}%)`);
+    } else {
+      reasons.push(`目前不屬於近60日低檔區 (${rangePosition.toFixed(0)}%)`);
+    }
+
     // 條件 B: 價格沒漲，但籌碼狂買 (多頭籌碼背離)
     if (priceChangePct >= -6 && priceChangePct <= 3 && buyDayRatio >= 0.55) {
-      score += 45;
+      score += 30;
       reasons.push(`價格與籌碼呈多頭背離 (股價近月微跌或持平 ${priceChangePct.toFixed(1)}%，但法人近20天買超天數高達 ${buyDays} 天)`);
     } else if (priceChangePct <= 6 && buyDayRatio >= 0.5) {
-      score += 25;
+      score += 15;
       reasons.push(`籌碼偏向多方緩步吸納 (股價小幅拉抬 ${priceChangePct.toFixed(1)}%，買超天數 ${buyDays} 天)`);
     } else {
       reasons.push(`價格與買賣超天數步調一致 (買超天數 ${buyDays} 天)`);
@@ -545,11 +589,16 @@ class DataEngine {
       reasons.push(`法人近20天呈現累計調節狀態`);
     }
 
+    if (hasEstimatedChips) {
+      score = Math.min(score, 44);
+      reasons.push('法人資料為量價推估，不能判定為真實吃貨訊號');
+    }
+
     // 5. 狀態分類
     let status = "none";
-    if (score >= 70) {
+    if (!hasEstimatedChips && score >= 70 && rangePosition <= 45 && totalNetBuy > 0 && buyDays >= 11) {
       status = "high"; // 壓低吃貨
-    } else if (score >= 45) {
+    } else if (!hasEstimatedChips && score >= 50 && totalNetBuy > 0 && buyDays >= 10) {
       status = "mid";  // 溫和吃貨
     }
 
@@ -559,8 +608,10 @@ class DataEngine {
       status,
       amplitude: priceAmplitude,
       change: priceChangePct,
+      rangePosition,
       buyDays,
       totalNetBuy,
+      isEstimated: hasEstimatedChips,
       detail: reasons.join("；")
     };
   }
@@ -604,7 +655,7 @@ class DataEngine {
       ],
       generationConfig: {
         temperature: 0.2,
-        maxOutputTokens: 2048
+        maxOutputTokens: 8192
       }
     };
 
@@ -623,10 +674,19 @@ class DataEngine {
       }
 
       const resJson = await response.json();
-      const answer = resJson.candidates?.[0]?.content?.parts?.[0]?.text;
+      const candidate = resJson.candidates?.[0];
+      const answer = candidate?.content?.parts
+        ?.map(part => part.text || '')
+        .join('')
+        .trim();
       
       if (!answer) {
-        throw new Error("Gemini 回傳了空的解答！");
+        const finishReason = candidate?.finishReason;
+        throw new Error(finishReason ? `Gemini 回傳了空的解答，停止原因：${finishReason}` : "Gemini 回傳了空的解答！");
+      }
+
+      if (candidate?.finishReason === 'MAX_TOKENS') {
+        return `${answer}\n\n> 回覆因模型輸出長度限制被截斷，請要求我「繼續」或縮小分析範圍。`;
       }
 
       return answer;
@@ -802,9 +862,9 @@ class DataEngine {
       };
     }
 
-    // Deterministic dynamic premium/discount rate based on current price and code
+    // Local-only estimate. This is not the fund company's official intraday NAV.
     const priceSeed = Math.sin(parseFloat(cleanId) * 13 + currentPrice);
-    const premiumDiscountRate = parseFloat((priceSeed * 0.45).toFixed(2)); // Fluctuates realistically between -0.45% and +0.45%
+    const premiumDiscountRate = parseFloat((priceSeed * 0.45).toFixed(2));
     
     const nav = parseFloat((currentPrice / (1 + premiumDiscountRate / 100)).toFixed(2));
     const premiumDiscountValue = parseFloat((currentPrice - nav).toFixed(2));
@@ -815,13 +875,13 @@ class DataEngine {
 
     if (premiumDiscountRate > 0.05) {
       status = "premium";
-      advisory = `⚠️ 當前市價（${currentPrice.toFixed(2)}）高於預估淨值（${nav.toFixed(2)}），溢價率達 <b class="text-up">${premiumDiscountRate.toFixed(2)}%</b>。目前買盤追價意願強烈，但存在一定的追高溢價風險，建議投資人靜待折溢價趨於合理區間時再行佈局較為安全。`;
+      advisory = `⚠️ 本區塊使用本地估算淨值，非官方即時 NAV。估算結果顯示市價（${currentPrice.toFixed(2)}）高於估算淨值（${nav.toFixed(2)}），估算溢價率 <b class="text-up">${premiumDiscountRate.toFixed(2)}%</b>。請以投信或交易所公告的 iNAV/淨值再次核對後再判斷。`;
     } else if (premiumDiscountRate < -0.05) {
       status = "discount";
-      advisory = `🟢 當前市價（${currentPrice.toFixed(2)}）低於預估淨值（${nav.toFixed(2)}），折價率達 <b class="text-down">${Math.abs(premiumDiscountRate).toFixed(2)}%</b>。這代表您可以低於 ETF 底層資產價值的折扣價買進，具備良好的安全邊際，對中長線投資者是極佳的分批佈局買點。`;
+      advisory = `🟢 本區塊使用本地估算淨值，非官方即時 NAV。估算結果顯示市價（${currentPrice.toFixed(2)}）低於估算淨值（${nav.toFixed(2)}），估算折價率 <b class="text-down">${Math.abs(premiumDiscountRate).toFixed(2)}%</b>。此結果僅供觀察，不能視為確定折價或買進依據。`;
     } else {
       status = "fair";
-      advisory = `✨ 當前市價（${currentPrice.toFixed(2)}）與預估淨值（${nav.toFixed(2)}）幾乎完全一致，折溢價率僅 <b class="text-highlight">${premiumDiscountRate.toFixed(2)}%</b>，估值水準非常合理。此狀態下無須擔心套利或追高價差，極適合定期定額或依原投資計畫建立部位。`;
+      advisory = `✨ 本區塊使用本地估算淨值，非官方即時 NAV。估算市價（${currentPrice.toFixed(2)}）與估算淨值（${nav.toFixed(2)}）接近，估算折溢價率 <b class="text-highlight">${premiumDiscountRate.toFixed(2)}%</b>。正式交易前仍應核對官方 iNAV/淨值與成交流動性。`;
     }
 
     return {
@@ -833,6 +893,8 @@ class DataEngine {
       isPremium: isPremium,
       status: status,
       advisory: advisory,
+      source: "本地估算，非官方即時 NAV",
+      estimated: true,
       holdings: etf.holdings
     };
   }

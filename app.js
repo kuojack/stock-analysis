@@ -13,6 +13,9 @@ let activeStockChange = '+3.16%'; // Default active stock change percent
 let activeStockData = null;   // Active calculated stock payload
 let activeChipData = null;    // Active institutional chips payload
 let currentLoadRequestId = 0; // Async request tracking ID to prevent race conditions
+let stockSearchMatches = [];
+let activeSearchIndex = -1;
+let searchDebounceTimer = null;
 
 // Watchlist memory
 let watchlist = [];
@@ -53,14 +56,50 @@ function initAppEvents() {
   const txtSearch = document.getElementById('txtSearchStock');
   const btnSearch = document.getElementById('btnSearchStock');
   
-  const handleSearch = () => {
+  const handleSearch = async () => {
     const query = txtSearch.value.trim();
     if (query) {
-      loadStockData(query);
+      try {
+        const resolved = await resolveStockSearchInput(query);
+        if (!resolved) {
+          alert(`找不到「${query}」對應的台股代號，請改用完整股名或股票代號。`);
+          return;
+        }
+        txtSearch.value = '';
+        hideStockSearchSuggestions();
+        loadStockData(resolved.code);
+      } catch (err) {
+        console.error("Stock search failed:", err);
+        alert("股票名稱搜尋暫時無法取得資料，請稍後再試或改用股票代號。");
+      }
     }
   };
   btnSearch.addEventListener('click', handleSearch);
-  txtSearch.addEventListener('keypress', (e) => { if (e.key === 'Enter') handleSearch(); });
+  txtSearch.addEventListener('input', () => queueStockSearchSuggestions(txtSearch.value));
+  txtSearch.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      moveSearchSuggestion(1);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      moveSearchSuggestion(-1);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      const selected = stockSearchMatches[activeSearchIndex];
+      if (selected) {
+        chooseSearchSuggestion(selected);
+      } else {
+        handleSearch();
+      }
+    } else if (e.key === 'Escape') {
+      hideStockSearchSuggestions();
+    }
+  });
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.search-box') && !e.target.closest('#stockSearchSuggestions')) {
+      hideStockSearchSuggestions();
+    }
+  });
 
   // Quick switch list & deletion
   document.getElementById('stockList').addEventListener('click', (e) => {
@@ -155,6 +194,11 @@ function initAppEvents() {
 
     if (!geminiKey || !pin) {
       alert("請完整填寫 Gemini API Key 與自訂 PIN 碼！");
+      return;
+    }
+
+    if (!isStrongEnoughPin(pin)) {
+      alert("PIN 至少需要 8 碼，且建議混合英文與數字，避免使用生日或連續數字。");
       return;
     }
 
@@ -315,6 +359,10 @@ function initAppEvents() {
   });
 }
 
+function isStrongEnoughPin(pin) {
+  return typeof pin === 'string' && pin.length >= 8 && /[A-Za-z]/.test(pin) && /\d/.test(pin);
+}
+
 /**
  * Update Selected Model Status Indicator and Dashboard highlight
  */
@@ -442,8 +490,190 @@ function checkLocalKeysState() {
   } else {
     // No keys configured, show prompt & load mock data directly so UI is beautiful from start
     updateApiStatus();
-    loadStockData(activeStockCode);
+    scheduleInitialStockLoad(activeStockCode);
   }
+}
+
+function scheduleInitialStockLoad(stockCode) {
+  const run = () => loadStockData(stockCode);
+  if ('requestIdleCallback' in window) {
+    requestIdleCallback(run, { timeout: 800 });
+  } else {
+    setTimeout(run, 80);
+  }
+}
+
+async function resolveStockSearchInput(input) {
+  const query = String(input || '').trim();
+  if (!query) return null;
+
+  const numericMatch = query.match(/\d{4,6}/);
+  if (numericMatch) {
+    return { code: numericMatch[0], name: '' };
+  }
+
+  const normalizedQuery = query.replace(/\s+/g, '').toLowerCase();
+
+  const localMatch = watchlist.find(item =>
+    item.name.replace(/\s+/g, '').toLowerCase().includes(normalizedQuery)
+  );
+  if (localMatch) {
+    return { code: localMatch.code, name: localMatch.name };
+  }
+
+  const infoData = await getTaiwanStockInfoForSearch();
+  const matches = infoData.filter(item => {
+    const stockName = String(item.stock_name || '').replace(/\s+/g, '').toLowerCase();
+    const stockId = String(item.stock_id || '').trim();
+    return stockName === normalizedQuery || stockName.includes(normalizedQuery) || stockId === query;
+  });
+
+  if (matches.length === 0) return null;
+
+  const exact = matches.find(item =>
+    String(item.stock_name || '').replace(/\s+/g, '').toLowerCase() === normalizedQuery
+  );
+  const preferred = exact ||
+    matches.find(item => item.type === 'twse') ||
+    matches.find(item => item.type === 'tpex') ||
+    matches[0];
+
+  return {
+    code: String(preferred.stock_id || '').trim(),
+    name: preferred.stock_name || ''
+  };
+}
+
+function queueStockSearchSuggestions(input) {
+  clearTimeout(searchDebounceTimer);
+  const query = String(input || '').trim();
+  if (query.length < 1) {
+    hideStockSearchSuggestions();
+    return;
+  }
+
+  searchDebounceTimer = setTimeout(async () => {
+    try {
+      const matches = await findStockSearchMatches(query, 8);
+      renderStockSearchSuggestions(matches);
+    } catch (err) {
+      console.warn("Stock autocomplete failed:", err);
+      hideStockSearchSuggestions();
+    }
+  }, 160);
+}
+
+async function findStockSearchMatches(input, limit = 8) {
+  const query = String(input || '').trim();
+  if (!query) return [];
+
+  const normalizedQuery = query.replace(/\s+/g, '').toLowerCase();
+  const numericLike = /^\d+$/.test(query);
+  const fromWatchlist = watchlist
+    .filter(item => item.code.includes(query) || item.name.replace(/\s+/g, '').toLowerCase().includes(normalizedQuery))
+    .map(item => ({ code: item.code, name: item.name, market: '自選' }));
+
+  let infoMatches = [];
+  if (!numericLike || query.length >= 2) {
+    const infoData = await getTaiwanStockInfoForSearch();
+    infoMatches = infoData
+      .filter(item => {
+        const stockName = String(item.stock_name || '').replace(/\s+/g, '').toLowerCase();
+        const stockId = String(item.stock_id || '').trim();
+        return stockId.includes(query) || stockName.includes(normalizedQuery);
+      })
+      .map(item => ({
+        code: String(item.stock_id || '').trim(),
+        name: item.stock_name || '',
+        market: window.DataEngine.getMarketLabel(item.type)
+      }));
+  }
+
+  const unique = new Map();
+  [...fromWatchlist, ...infoMatches].forEach(item => {
+    if (item.code && !unique.has(item.code)) unique.set(item.code, item);
+  });
+
+  return [...unique.values()].slice(0, limit);
+}
+
+function renderStockSearchSuggestions(matches) {
+  const panel = document.getElementById('stockSearchSuggestions');
+  if (!panel) return;
+
+  stockSearchMatches = matches;
+  activeSearchIndex = matches.length ? 0 : -1;
+
+  if (!matches.length) {
+    hideStockSearchSuggestions();
+    return;
+  }
+
+  panel.innerHTML = matches.map((item, index) => `
+    <button type="button" class="search-suggestion-item ${index === activeSearchIndex ? 'active' : ''}" data-index="${index}">
+      <span class="search-suggestion-code">${escapeHtml(item.code)}</span>
+      <span class="search-suggestion-name">${escapeHtml(item.name)}</span>
+      <span class="search-suggestion-market">${escapeHtml(item.market || '')}</span>
+    </button>
+  `).join('');
+  panel.hidden = false;
+
+  panel.querySelectorAll('.search-suggestion-item').forEach(btn => {
+    btn.addEventListener('click', () => {
+      chooseSearchSuggestion(stockSearchMatches[Number(btn.dataset.index)]);
+    });
+  });
+}
+
+function moveSearchSuggestion(delta) {
+  if (!stockSearchMatches.length) return;
+  activeSearchIndex = (activeSearchIndex + delta + stockSearchMatches.length) % stockSearchMatches.length;
+  renderStockSearchSuggestions(stockSearchMatches);
+}
+
+function chooseSearchSuggestion(item) {
+  if (!item) return;
+  const txtSearch = document.getElementById('txtSearchStock');
+  if (txtSearch) txtSearch.value = '';
+  hideStockSearchSuggestions();
+  loadStockData(item.code);
+}
+
+function hideStockSearchSuggestions() {
+  const panel = document.getElementById('stockSearchSuggestions');
+  if (panel) {
+    panel.hidden = true;
+    panel.innerHTML = '';
+  }
+  stockSearchMatches = [];
+  activeSearchIndex = -1;
+}
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+async function getTaiwanStockInfoForSearch() {
+  if (Array.isArray(window.taiwanStockInfoCache)) {
+    return window.taiwanStockInfoCache;
+  }
+
+  try {
+    window.taiwanStockInfoCache = await window.DataEngine.fetchFinMindData({ dataset: 'TaiwanStockInfo' }, activeFinmindKey);
+  } catch (err) {
+    if (activeFinmindKey && window.DataEngine.isFinMindAuthError?.(err)) {
+      window.taiwanStockInfoCache = await window.DataEngine.fetchFinMindData({ dataset: 'TaiwanStockInfo' }, '');
+    } else {
+      throw err;
+    }
+  }
+
+  return Array.isArray(window.taiwanStockInfoCache) ? window.taiwanStockInfoCache : [];
 }
 
 function updateApiStatus() {
@@ -454,14 +684,25 @@ function updateApiStatus() {
 
   // --- FinMind Status ---
   if (!activeFinmindKey) {
-    // Unconfigured / Undecrypted: Amber Yellow status
-    if (btnFinmind) btnFinmind.className = "btn-api-status locked";
-    if (lblFinmind) lblFinmind.innerText = "FinMind: 未解密";
+    // FinMind token is optional. Public endpoints can still provide stock prices.
+    if (window.finmindStatus === 'public') {
+      if (btnFinmind) btnFinmind.className = "btn-api-status unlocked";
+      if (lblFinmind) lblFinmind.innerText = "FinMind: 公開資料";
+    } else if (window.finmindStatus === 'warning') {
+      if (btnFinmind) btnFinmind.className = "btn-api-status locked";
+      if (lblFinmind) lblFinmind.innerText = "FinMind: 資料異常";
+    } else {
+      if (btnFinmind) btnFinmind.className = "btn-api-status locked";
+      if (lblFinmind) lblFinmind.innerText = "FinMind: 未配置";
+    }
   } else {
     if (window.finmindStatus === 'invalid') {
       // Configuration was supplied but has failed in use: Neon Red status
       if (btnFinmind) btnFinmind.className = "btn-api-status error";
       if (lblFinmind) lblFinmind.innerText = "FinMind: 金鑰異常";
+    } else if (window.finmindStatus === 'warning') {
+      if (btnFinmind) btnFinmind.className = "btn-api-status locked";
+      if (lblFinmind) lblFinmind.innerText = "FinMind: 資料異常";
     } else {
       // Configuration successfully loaded/decrypted and working: Neon Green status
       if (btnFinmind) btnFinmind.className = "btn-api-status unlocked";
@@ -617,7 +858,7 @@ async function loadStockData(stockId) {
 
     updatePatternsCard(computedHistory);
     updateMultiTimeframeCard(computedHistory);
-    updateIndicatorsTable(latestBar);
+    updateIndicatorsTable(latestBar, prevBar);
 
     // 5. Fetch chips after price-only blocks are already refreshed.
     const chips = await window.DataEngine.fetchInstitutionalFlows(stockId, computedHistory, activeFinmindKey);
@@ -716,11 +957,21 @@ function updateTechnicalOverview(history, chips) {
     }
     accumEl.innerHTML = `<span class="${badgeClass}" title="${accum.detail}">${badgeText}</span>`;
   }
+  const chipSourceEl = document.getElementById('lblChipSource');
+  if (chipSourceEl) {
+    chipSourceEl.innerText = getChipSourceText(chips);
+    chipSourceEl.className = chips.some(d => d.estimated) ? 'value text-warning' : 'value text-up';
+  }
 
   // Comprehensive evaluation
   const compEl = document.getElementById('lblComprehensiveEval');
   compEl.innerText = isBullish ? "多頭格局未變，短線高檔震盪" : "多空力道交界，防守關卡不破";
   compEl.className = `value font-weight-bold ${isBullish ? 'text-up' : 'text-warning'}`;
+}
+
+function getChipSourceText(chips) {
+  if (!Array.isArray(chips) || chips.length === 0) return '資料不足';
+  return chips.some(d => d.estimated) ? '量價推估' : 'FinMind 法人資料';
 }
 
 /**
@@ -806,8 +1057,8 @@ function updateMajorPlayersTable(history, chips) {
     };
   });
 
-  // Recalculate 10-day accum (mocking cumulative flow to look natural)
-  let latestAccum = -839;
+  // Recalculate displayed accumulation from the visible estimated flow only.
+  let latestAccum = 0;
   flows.reverse().forEach((flow, i) => {
     latestAccum += flow.net;
     flow.accum = latestAccum;
@@ -959,7 +1210,7 @@ function updateMultiTimeframeCard(history) {
 /**
  * Render Technical Indicator summary rows
  */
-function updateIndicatorsTable(latestBar) {
+function updateIndicatorsTable(latestBar, prevBar = latestBar) {
   const tbody = document.getElementById('tbodyIndicators');
   tbody.innerHTML = '';
 
@@ -976,7 +1227,8 @@ function updateIndicatorsTable(latestBar) {
   // KD
   const kdStatus = latestBar.K > latestBar.D ? '多紅' : '空綠';
   const kdCls = latestBar.K > latestBar.D ? 'text-up' : 'text-down';
-  addRow('KD (9,3)', kdStatus, `K值 (${latestBar.K.toFixed(1)}) > D值 (${latestBar.D.toFixed(1)})，維持黃金交叉`, kdCls);
+  const kdRelation = latestBar.K > latestBar.D ? '黃金交叉' : '死亡交叉';
+  addRow('KD (9,3)', kdStatus, `K值 ${latestBar.K.toFixed(1)}、D值 ${latestBar.D.toFixed(1)}，目前為${kdRelation}`, kdCls);
 
   // MACD
   const macdStatus = latestBar.macdBar >= 0 ? '多紅' : '空綠';
@@ -990,10 +1242,31 @@ function updateIndicatorsTable(latestBar) {
 
   // Bollinger Bands
   const bbStatus = latestBar.bbUpper && latestBar.close > latestBar.bbMiddle ? '多頭' : '盤整';
-  addRow('布林通道', bbStatus, latestBar.bbUpper && latestBar.close > latestBar.bbUpper ? '股價站上上軌，通道開口擴大' : '站穩中軌，偏多整理中', latestBar.close > latestBar.bbMiddle ? 'text-up' : '');
+  const bbDesc = latestBar.bbUpper && latestBar.close > latestBar.bbUpper
+    ? '股價站上上軌，短線偏強但需留意過熱'
+    : (latestBar.bbMiddle && latestBar.close >= latestBar.bbMiddle ? '站上中軌，偏多整理中' : '跌破中軌，短線轉弱或整理');
+  addRow('布林通道', bbStatus, bbDesc, latestBar.close > latestBar.bbMiddle ? 'text-up' : 'text-warning');
 
   // Volume
-  addRow('成交量', '紅紅', '量增價漲，呈現健康價量結構。', 'text-up');
+  const priceUp = latestBar.close >= prevBar.close;
+  const volumeUp = latestBar.volume > prevBar.volume;
+  let volumeStatus = '量縮整理';
+  let volumeDesc = '量能收斂，短線多空觀望。';
+  let volumeCls = 'text-muted';
+  if (priceUp && volumeUp) {
+    volumeStatus = '量增價漲';
+    volumeDesc = '價漲且量能放大，短線動能偏多。';
+    volumeCls = 'text-up';
+  } else if (!priceUp && volumeUp) {
+    volumeStatus = '量增價跌';
+    volumeDesc = '下跌伴隨量能放大，需留意賣壓。';
+    volumeCls = 'text-down';
+  } else if (priceUp && !volumeUp) {
+    volumeStatus = '價漲量縮';
+    volumeDesc = '價格上漲但量能未跟上，追價需保守。';
+    volumeCls = 'text-warning';
+  }
+  addRow('成交量', volumeStatus, volumeDesc, volumeCls);
 }
 
 /**
@@ -1001,19 +1274,26 @@ function updateIndicatorsTable(latestBar) {
  */
 function updateSuggestionsCard(history, chips) {
   const latest = history[history.length - 1];
+  const recent20 = history.slice(-20);
+  const recent60 = history.slice(-60);
+  const recent20High = Math.max(...recent20.map(d => d.high));
+  const recent20Low = Math.min(...recent20.map(d => d.low));
+  const recent60Low = Math.min(...recent60.map(d => d.low));
+  const middleSupport = latest.bbMiddle || latest.sma20 || latest.close;
+  const primarySupport = Math.min(middleSupport, latest.sma20 || middleSupport);
   
-  // Calculate dynamic levels
-  const resistance = parseFloat((latest.close * 1.05).toFixed(1));
-  const pullbackMax = parseFloat((latest.close * 0.98).toFixed(1));
-  const pullbackMin = parseFloat((latest.close * 0.96).toFixed(1));
-  const supportMax = parseFloat((latest.close * 0.94).toFixed(1));
-  const supportMin = parseFloat((latest.close * 0.90).toFixed(1));
-  const stopLoss = parseFloat((latest.close * 0.91).toFixed(1));
-  const defense = parseFloat((latest.close * 0.88).toFixed(1));
-  const keyBreakout = parseFloat((latest.close * 1.015).toFixed(1));
+  // Calculate levels from visible technical structure instead of fixed percentages.
+  const resistance = parseFloat(recent20High.toFixed(1));
+  const pullbackMax = parseFloat(Math.min(latest.close * 0.99, Math.max(latest.sma5 || latest.close, middleSupport)).toFixed(1));
+  const pullbackMin = parseFloat(Math.min(pullbackMax, primarySupport).toFixed(1));
+  const supportMax = parseFloat(Math.max(primarySupport, recent20Low).toFixed(1));
+  const supportMin = parseFloat(Math.min(primarySupport, recent20Low).toFixed(1));
+  const stopLoss = parseFloat((supportMin * 0.98).toFixed(1));
+  const defense = parseFloat(Math.min(latest.sma60 || recent60Low, recent60Low).toFixed(1));
+  const keyBreakout = parseFloat((resistance * 1.005).toFixed(1));
 
   // Render Key Prices Card
-  document.getElementById('lblKeyResistance').innerText = `${resistance - 10} ~ ${resistance + 15}`;
+  document.getElementById('lblKeyResistance').innerText = `${resistance} ~ ${keyBreakout}`;
   document.getElementById('lblKeyPullback').innerText = `${pullbackMin} ~ ${pullbackMax}`;
   document.getElementById('lblKeySupport').innerText = `${supportMin} ~ ${supportMax}`;
   document.getElementById('lblKeyDefense').innerText = `${defense}`;
@@ -1022,52 +1302,90 @@ function updateSuggestionsCard(history, chips) {
   // Render suggestions bullets
   const isUp = latest.sma5 > latest.sma20;
   document.getElementById('sugStrategy').innerText = isUp ? "高檔震盪偏多，回檔找買點" : "季線支撐不破，區間操作";
-  document.getElementById('sugEntry').innerText = `${pullbackMin} ~ ${pullbackMax} (回檔買點)`;
+  document.getElementById('sugEntry').innerText = `${pullbackMin} ~ ${pullbackMax} (回測均線/中軌)`;
   document.getElementById('sugAdd').innerText = `突破 ${keyBreakout} 站穩`;
-  document.getElementById('sugStopLoss').innerText = `跌破 ${stopLoss} (守中軌下方)`;
+  document.getElementById('sugStopLoss').innerText = `跌破 ${stopLoss} (支撐失守)`;
   document.getElementById('sugDefense').innerText = `${defense} (跌破轉弱)`;
   document.getElementById('sugDirection').innerText = isUp ? "以多方操作為主，嚴設停損" : "觀望整理，待帶量突破";
 
-  // Light bulps
+  // Light bulbs
   const bulb = document.getElementById('signalLight');
   const bulbReason = document.getElementById('lblSignalReason');
   
-  // Deterministic signal rules based on KD and chips
-  const totalFlow = chips.reduce((sum, d) => sum + d.total, 0);
+  // Conservative signal rules based on trend, KD, volume, and real institutional flow.
+  const sortedChips = [...chips].sort((a, b) => b.date.localeCompare(a.date));
+  const recent5Flow = sortedChips.slice(0, 5).reduce((sum, d) => sum + d.total, 0);
+  const recent20Flow = sortedChips.reduce((sum, d) => sum + d.total, 0);
+  const recent5BuyDays = sortedChips.slice(0, 5).filter(d => d.total > 0).length;
+  const hasEstimatedChips = sortedChips.some(d => d.estimated);
+  const prev = history[history.length - 2] || latest;
+  const volumeUp = latest.volume > prev.volume;
+  const trendBullish = latest.sma5 > latest.sma20 && latest.sma20 > latest.sma60 && latest.close > latest.sma20;
+  const kdBullish = latest.K > latest.D && latest.K >= 45 && latest.K <= 85;
+  const trendBearish = latest.close < latest.sma20 && latest.K < latest.D;
+  const sourceLabel = getChipSourceText(sortedChips);
+  const sourceEl = document.getElementById('lblSuggestionSource');
+  if (sourceEl) {
+    sourceEl.innerText = `資料來源：日線 FinMind；籌碼 ${sourceLabel}`;
+  }
   
-  if (latest.K > latest.D && totalFlow > 0) {
+  if (!hasEstimatedChips && trendBullish && kdBullish && recent5Flow > 0 && recent20Flow > 0 && recent5BuyDays >= 3 && volumeUp) {
     bulb.className = "signal-bulb bullish";
-    bulb.innerText = "買進";
-    bulbReason.innerText = "原因：均線多頭且三大法人連續站回買方，技術與籌碼雙管齊下。";
-  } else if (latest.K < latest.D && totalFlow < 0) {
+    bulb.innerText = "偏多";
+    bulbReason.innerText = `原因：均線多頭、KD偏多、近5日法人買超 ${recent5Flow.toLocaleString()} 張且量能放大，屬條件式偏多訊號，仍需等進場價或突破確認。`;
+  } else if (!hasEstimatedChips && trendBearish && recent5Flow < 0 && recent20Flow < 0) {
     bulb.className = "signal-bulb bearish";
     bulb.innerText = "偏空";
-    bulbReason.innerText = "原因：技術指標呈空頭死叉，主力資金大額出逃，防拉回風險。";
+    bulbReason.innerText = `原因：股價跌破月線、KD偏空，且近5日法人賣超 ${Math.abs(recent5Flow).toLocaleString()} 張，需防拉回風險。`;
   } else {
     bulb.className = "signal-bulb warning";
     bulb.innerText = "觀察";
-    bulbReason.innerText = "原因：技術面強勢但主力10日累計為負，建議先高檔觀望。";
+    bulbReason.innerText = hasEstimatedChips
+      ? "原因：法人籌碼為量價推估，不能產生正式買進燈號；請以觀察處理。"
+      : "原因：技術、量能與法人籌碼未同時滿足，暫以觀察處理。";
   }
 
-  // Draw dynamically computed AI win rates and probability charts based on stock indicators
-  const winRate = isUp ? 58 + Math.floor(Math.sin(latest.close) * 6) : 45 + Math.floor(Math.sin(latest.close) * 5);
-  const trendLbl = isUp ? "多頭強勢" : "中性偏多";
+  const detailEl = document.getElementById('lblSignalDetails');
+  if (detailEl) {
+    detailEl.innerHTML = [
+      ['均線多頭', trendBullish ? '是' : '否'],
+      ['KD 偏多', kdBullish ? '是' : '否'],
+      ['量能放大', volumeUp ? '是' : '否'],
+      ['近5日法人', `${recent5Flow.toLocaleString()} 張 / ${recent5BuyDays} 天買超`],
+      ['近20日法人', `${recent20Flow.toLocaleString()} 張`],
+      ['籌碼來源', sourceLabel]
+    ].map(([label, value]) => `<span><b>${label}</b><em>${value}</em></span>`).join('');
+  }
+
+  // Draw data-driven confidence numbers from the same visible indicators.
+  let signalScore = 50;
+  if (trendBullish) signalScore += 12;
+  if (kdBullish) signalScore += 8;
+  if (volumeUp) signalScore += 5;
+  if (!hasEstimatedChips && recent5Flow > 0) signalScore += 8;
+  if (!hasEstimatedChips && recent20Flow > 0) signalScore += 7;
+  if (trendBearish) signalScore -= 12;
+  if (!hasEstimatedChips && recent5Flow < 0) signalScore -= 8;
+  signalScore = Math.max(25, Math.min(78, signalScore));
+
+  const winRate = signalScore;
+  const trendLbl = trendBullish ? "多頭偏強" : (trendBearish ? "偏空整理" : "中性觀察");
   
   drawWinRateGauge(winRate, trendLbl);
 
   // Probabilities
-  const riseProb = isUp ? 45 + Math.floor(Math.sin(latest.close) * 5) : 33 + Math.floor(Math.sin(latest.close) * 4);
-  const fallProb = isUp ? 30 - Math.floor(Math.sin(latest.close) * 3) : 38 + Math.floor(Math.sin(latest.close) * 3);
-  const neutProb = 100 - riseProb - fallProb;
+  const riseProb = Math.max(25, Math.min(65, Math.round(signalScore * 0.72)));
+  const fallProb = Math.max(20, Math.min(55, Math.round(60 - signalScore * 0.45)));
+  const neutProb = Math.max(10, 100 - riseProb - fallProb);
 
   drawProbabilityPie(riseProb, fallProb, neutProb);
 
   // AI conclusion Text updates
   const aiConc = document.getElementById('lblAiConclusion');
   if (riseProb > fallProb) {
-    aiConc.innerText = `預測結論：明日震盪偏多（上漲率 ${riseProb}%），留意高檔賣壓變化。`;
+    aiConc.innerText = `條件結論：隔日偏多分數 ${riseProb}%，但仍需觀察量能與法人延續性。`;
   } else {
-    aiConc.innerText = `預測結論：明日拉回整理率較高（下跌率 ${fallProb}%），建議空手觀望。`;
+    aiConc.innerText = `條件結論：隔日轉弱分數 ${fallProb}%，建議降低追價並觀察支撐。`;
   }
 }
 
@@ -1111,8 +1429,8 @@ function updateEtfDetailsCard(stockId, currentPrice) {
     const row = document.createElement('div');
     row.className = 'etf-holding-row';
     row.innerHTML = `
-      <span class="etf-hold-code">${hold.code}</span>
-      <span class="etf-hold-name">${hold.name}</span>
+      <span class="etf-hold-code">${escapeHtml(hold.code)}</span>
+      <span class="etf-hold-name">${escapeHtml(hold.name)}</span>
       <div class="etf-progress-bar-container">
         <div class="etf-progress-bar" data-width="${hold.weight}%" style="width: 0%;"></div>
       </div>
@@ -1372,7 +1690,8 @@ function buildActiveStockContext() {
     const etfDetails = window.DataEngine.getETFDetails(activeStockCode, latest.close);
     baseContext.etfText = [
       `- 預估淨值 (NAV): ${formatPrice(etfDetails.nav)}`,
-      `- 折溢價狀態: ${etfDetails.status === 'premium' ? '溢價' : (etfDetails.status === 'discount' ? '折價' : '折溢價合理')} ${formatPercent(etfDetails.premiumDiscountRate)}，差額 ${formatPrice(etfDetails.premiumDiscountValue)} 元`,
+      `- 折溢價狀態: ${etfDetails.status === 'premium' ? '估算溢價' : (etfDetails.status === 'discount' ? '估算折價' : '估算接近淨值')} ${formatPercent(etfDetails.premiumDiscountRate)}，差額 ${formatPrice(etfDetails.premiumDiscountValue)} 元`,
+      `- 折溢價資料來源: ${etfDetails.source}`,
       `- 核心成分股: ${etfDetails.holdings.map((h, idx) => `${idx + 1}. ${h.code} ${h.name} ${formatPercent(h.weight, 1)}`).join('；')}`
     ].join('\n');
   }
@@ -1417,7 +1736,7 @@ ${userQuestion}
 3. 不要宣稱已查到最新新聞、最新財報、法說會或市場傳聞。
 4. 不要保證漲跌、勝率或報酬；可用「偏多、偏空、觀察、資料不足」這類條件式判斷。
 5. 若需要操作區間，只能用已提供價格與技術指標推導，並標明這是條件式風險控管，不是確定建議。
-6. 優先用 Markdown 表格或短條列；避免長篇空泛文字。
+6. 優先用短條列；只有比較數據時才用 Markdown 表格，表格最多 5 列，避免過寬表格與長篇空泛文字。
 `;
 }
 
@@ -1570,10 +1889,10 @@ function renderWatchlist() {
     div.className = `stock-item ${isActive}`;
     div.dataset.code = item.code;
     div.innerHTML = `
-      <span class="code">${item.code}</span>
-      <span class="name">${item.name}</span>
-      <span class="change ${changeClass}">${item.change || '--'}</span>
-      <button class="btn-delete-stock" data-code="${item.code}" title="從觀測清單刪除">&times;</button>
+      <span class="code">${escapeHtml(item.code)}</span>
+      <span class="name">${escapeHtml(item.name)}</span>
+      <span class="change ${changeClass}">${escapeHtml(item.change || '--')}</span>
+      <button class="btn-delete-stock" data-code="${escapeHtml(item.code)}" title="從觀測清單刪除">&times;</button>
     `;
     stockListEl.appendChild(div);
 
@@ -1582,7 +1901,7 @@ function renderWatchlist() {
       const btn = document.createElement('button');
       btn.className = `quick-stock-tag ${isActive}`;
       btn.dataset.code = item.code;
-      btn.innerHTML = `${item.name} <span class="tag-change ${changeClass}">${item.change || '--'}</span>`;
+      btn.innerHTML = `${escapeHtml(item.name)} <span class="tag-change ${changeClass}">${escapeHtml(item.change || '--')}</span>`;
       
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -1676,13 +1995,14 @@ function updateProfileAnalysisCard(stockId, resolvedName = '', resolvedIndustry 
     if (isEtf) {
       addDetailRow('ETF 名稱', profile.name || `ETF ${stockId}`);
       addDetailRow('市場別', profile.market || '資料不足');
-      addDetailRow('分類 / 產業', `<span class="text-highlight" title="${profile.indexOrProducts}">${profile.indexOrProducts || '資料不足'}</span>`);
+      addDetailRow('分類 / 產業', `<span class="text-highlight" title="${escapeHtml(profile.indexOrProducts || '資料不足')}">${escapeHtml(profile.indexOrProducts || '資料不足')}</span>`);
       addDetailRow('資料日期', profile.dataDate || profile.listedDate || '資料不足');
       addDetailRow('資料來源', profile.source || '資料不足');
+      addDetailRow('折溢價資料', '本地估算，非官方即時 NAV');
     } else {
       addDetailRow('股票名稱', profile.name || `台股 ${stockId}`);
       addDetailRow('市場別', profile.market || '資料不足');
-      addDetailRow('產業別', `<span class="text-highlight" title="${profile.indexOrProducts}">${profile.indexOrProducts || '資料不足'}</span>`);
+      addDetailRow('產業別', `<span class="text-highlight" title="${escapeHtml(profile.indexOrProducts || '資料不足')}">${escapeHtml(profile.indexOrProducts || '資料不足')}</span>`);
       addDetailRow('資料日期', profile.dataDate || profile.listedDate || '資料不足');
       addDetailRow('資料來源', profile.source || '資料不足');
     }

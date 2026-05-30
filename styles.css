@@ -6,8 +6,8 @@
 :root {
   /* Color Palette */
   --bg-app: #080c16;
-  --bg-card: rgba(18, 26, 47, 0.75);
-  --bg-card-hover: rgba(24, 35, 62, 0.85);
+  --bg-card: #121a2f;
+  --bg-card-hover: #18233e;
   --border-card: rgba(30, 41, 69, 0.6);
   --border-card-active: rgba(10, 132, 255, 0.5);
   
@@ -462,6 +462,50 @@ input, textarea, select {
   height: 16px;
 }
 
+.search-suggestions {
+  margin-top: -14px;
+  background: #10182b;
+  border: 1px solid var(--border-card);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+}
+
+.search-suggestion-item {
+  width: 100%;
+  background: transparent;
+  border: none;
+  color: var(--text-main);
+  display: grid;
+  grid-template-columns: 56px 1fr auto;
+  gap: 8px;
+  align-items: center;
+  padding: 9px 10px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.search-suggestion-item:hover,
+.search-suggestion-item.active {
+  background: rgba(10, 132, 255, 0.14);
+}
+
+.search-suggestion-code {
+  color: var(--color-highlight);
+  font-weight: 700;
+}
+
+.search-suggestion-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-suggestion-market {
+  color: var(--text-dim);
+  font-size: 10px;
+}
+
 /* Sidebar Sections */
 .sidebar-section {
   display: flex;
@@ -606,7 +650,6 @@ input, textarea, select {
   flex-direction: column;
   overflow: hidden;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
-  backdrop-filter: blur(10px);
   transition: background-color var(--transition-speed), border-color var(--transition-speed);
   position: relative; /* Allows absolute loader overlays to cover the card body perfectly */
 }
@@ -1073,6 +1116,44 @@ input, textarea, select {
   font-size: 11px;
   color: var(--text-muted);
   line-height: 1.4;
+}
+
+.signal-detail-list {
+  width: 100%;
+  display: grid;
+  gap: 5px;
+  font-size: 10px;
+  color: var(--text-muted);
+  text-align: left;
+}
+
+.signal-detail-list span {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  padding-top: 5px;
+}
+
+.signal-detail-list b,
+.signal-detail-list em {
+  font-style: normal;
+  font-weight: 500;
+}
+
+.signal-detail-list em {
+  color: var(--text-main);
+  text-align: right;
+}
+
+.data-source-pill {
+  color: var(--text-muted);
+  border: 1px solid var(--border-card);
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 999px;
+  padding: 3px 8px;
+  font-size: 10px;
+  font-weight: 500;
 }
 
 /* ==========================================================================
@@ -2771,5 +2852,3 @@ input, textarea, select {
   color: var(--text-muted);
   letter-spacing: 0.5px;
 }
-
-
